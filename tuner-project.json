@@ -1,0 +1,204 @@
+{
+  "Version": "1.0.0.0",
+  "LastState": 11,
+  "Modules": [
+    {
+      "ModuleName": "Front Left",
+      "ModuleId": 0,
+      "Encoder": null,
+      "SteerMotor": {
+        "Id": 0,
+        "Name": "Talon FXS (Device ID 0)",
+        "Model": "Talon FXS",
+        "CANbus": "",
+        "CANbusFriendly": "",
+        "SelectedMotorType": {
+          "Name": "REV Robotics NEO 550",
+          "FreeSpeedRps": 195.17,
+          "SlipCurrentLimit": 20,
+          "StatorCurrentLimit": 20
+        }
+      },
+      "DriveMotor": {
+        "Id": 1,
+        "Name": "Talon FX vers. C (Device ID 1)",
+        "Model": "Talon FX vers. C",
+        "CANbus": "",
+        "CANbusFriendly": "",
+        "SelectedMotorType": {
+          "Name": "WCP Kraken x60",
+          "FreeSpeedRps": 96.7,
+          "SlipCurrentLimit": 120,
+          "StatorCurrentLimit": 60
+        }
+      },
+      "IsEncoderInverted": false,
+      "IsSteerInverted": false,
+      "SelectedEncoderType": "Talon FXS PWM Encoder (Data Port)",
+      "EncoderOffset": 0.0,
+      "DriveMotorSelectionState": 1,
+      "SteerMotorSelectionState": 1,
+      "SteerEncoderSelectionState": 1,
+      "IsModuleValidationComplete": false,
+      "ValidatedSteerId": -1,
+      "ValidatedDriveId": -1,
+      "ValidatedEncoderId": -1
+    },
+    {
+      "ModuleName": "Front Right",
+      "ModuleId": 1,
+      "Encoder": null,
+      "SteerMotor": {
+        "Id": 2,
+        "Name": "Talon FXS (Device ID 2)",
+        "Model": "Talon FXS",
+        "CANbus": "",
+        "CANbusFriendly": "",
+        "SelectedMotorType": {
+          "Name": "REV Robotics NEO 550",
+          "FreeSpeedRps": 195.17,
+          "SlipCurrentLimit": 20,
+          "StatorCurrentLimit": 20
+        }
+      },
+      "DriveMotor": {
+        "Id": 3,
+        "Name": "Talon FX vers. C (Device ID 3)",
+        "Model": "Talon FX vers. C",
+        "CANbus": "",
+        "CANbusFriendly": "",
+        "SelectedMotorType": {
+          "Name": "WCP Kraken x60",
+          "FreeSpeedRps": 96.7,
+          "SlipCurrentLimit": 120,
+          "StatorCurrentLimit": 60
+        }
+      },
+      "IsEncoderInverted": false,
+      "IsSteerInverted": false,
+      "SelectedEncoderType": "Talon FXS PWM Encoder (Data Port)",
+      "EncoderOffset": 0.0,
+      "DriveMotorSelectionState": 1,
+      "SteerMotorSelectionState": 1,
+      "SteerEncoderSelectionState": 1,
+      "IsModuleValidationComplete": false,
+      "ValidatedSteerId": -1,
+      "ValidatedDriveId": -1,
+      "ValidatedEncoderId": -1
+    },
+    {
+      "ModuleName": "Back Left",
+      "ModuleId": 2,
+      "Encoder": null,
+      "SteerMotor": {
+        "Id": 4,
+        "Name": "Talon FXS (Device ID 4)",
+        "Model": "Talon FXS",
+        "CANbus": "",
+        "CANbusFriendly": "",
+        "SelectedMotorType": {
+          "Name": "REV Robotics NEO 550",
+          "FreeSpeedRps": 195.17,
+          "SlipCurrentLimit": 20,
+          "StatorCurrentLimit": 20
+        }
+      },
+      "DriveMotor": {
+        "Id": 5,
+        "Name": "Talon FX vers. C (Device ID 5)",
+        "Model": "Talon FX vers. C",
+        "CANbus": "",
+        "CANbusFriendly": "",
+        "SelectedMotorType": {
+          "Name": "WCP Kraken x60",
+          "FreeSpeedRps": 96.7,
+          "SlipCurrentLimit": 120,
+          "StatorCurrentLimit": 60
+        }
+      },
+      "IsEncoderInverted": false,
+      "IsSteerInverted": false,
+      "SelectedEncoderType": "Talon FXS PWM Encoder (Data Port)",
+      "EncoderOffset": 0.0,
+      "DriveMotorSelectionState": 1,
+      "SteerMotorSelectionState": 1,
+      "SteerEncoderSelectionState": 1,
+      "IsModuleValidationComplete": false,
+      "ValidatedSteerId": -1,
+      "ValidatedDriveId": -1,
+      "ValidatedEncoderId": -1
+    },
+    {
+      "ModuleName": "Back Right",
+      "ModuleId": 3,
+      "Encoder": null,
+      "SteerMotor": {
+        "Id": 6,
+        "Name": "Talon FXS (Device ID 6)",
+        "Model": "Talon FXS",
+        "CANbus": "",
+        "CANbusFriendly": "",
+        "SelectedMotorType": {
+          "Name": "REV Robotics NEO 550",
+          "FreeSpeedRps": 195.17,
+          "SlipCurrentLimit": 20,
+          "StatorCurrentLimit": 20
+        }
+      },
+      "DriveMotor": {
+        "Id": 7,
+        "Name": "Talon FX vers. C (Device ID 7)",
+        "Model": "Talon FX vers. C",
+        "CANbus": "",
+        "CANbusFriendly": "",
+        "SelectedMotorType": {
+          "Name": "WCP Kraken x60",
+          "FreeSpeedRps": 96.7,
+          "SlipCurrentLimit": 120,
+          "StatorCurrentLimit": 60
+        }
+      },
+      "IsEncoderInverted": false,
+      "IsSteerInverted": false,
+      "SelectedEncoderType": "Talon FXS PWM Encoder (Data Port)",
+      "EncoderOffset": 0.0,
+      "DriveMotorSelectionState": 1,
+      "SteerMotorSelectionState": 1,
+      "SteerEncoderSelectionState": 1,
+      "IsModuleValidationComplete": false,
+      "ValidatedSteerId": -1,
+      "ValidatedDriveId": -1,
+      "ValidatedEncoderId": -1
+    }
+  ],
+  "SwerveOptions": {
+    "Gyro": {
+      "Id": 1,
+      "Name": "Pigeon 2 (Device ID 1)",
+      "Model": "Pigeon 2",
+      "CANbus": "",
+      "CANbusFriendly": "",
+      "SelectedMotorType": null
+    },
+    "IsValidGyroCANbus": true,
+    "VerticalTrackSizeInches": 26.0,
+    "HorizontalTrackSizeInches": 26.0,
+    "WheelRadiusInches": 3.0,
+    "IsLeftSideInverted": false,
+    "IsRightSideInverted": true,
+    "SwerveModuleType": 0,
+    "SwerveModuleConfiguration": {
+      "ModuleBrand": -1,
+      "DriveRatio": 4.71,
+      "SteerRatio": 46.4236453,
+      "CouplingRatio": 0.0,
+      "CustomName": ""
+    },
+    "HasVerifiedSteer": false,
+    "SelectedModuleManufacturer": "Custom",
+    "HasVerifiedDrive": false,
+    "IsValidConfiguration": true
+  },
+  "TeamNumber": 7127,
+  "schema_version": "1"
+}

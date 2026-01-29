@@ -13,6 +13,8 @@ import com.ctre.phoenix6.swerve.SwerveModule.DriveRequestType;
 import com.ctre.phoenix6.swerve.SwerveRequest;
 
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.util.Units;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
@@ -22,6 +24,9 @@ import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
+import frc.robot.util.FuelSim;
+import frc.robot.vision.LoggableRobotPose;
+import frc.robot.vision.PhotonVisionSystem;
 
 public class Robot extends TimedRobot {
 
@@ -42,6 +47,7 @@ public class Robot extends TimedRobot {
     private final CommandXboxController joystick = new CommandXboxController(0);
 
     public final CommandSwerveDrivetrain drivetrain = TunerConstants.createDrivetrain();
+    public final PhotonVisionSystem vision = new PhotonVisionSystem(this::consumePhotonVisionMeasurement, () -> drivetrain.getState().Pose);
 
     private Command m_autonomousCommand;
 
@@ -62,7 +68,16 @@ public class Robot extends TimedRobot {
                         });
 
         configureBindings();
-
+        if (Robot.isSimulation()) {
+        FuelSim.getInstance().spawnStartingFuel();
+        FuelSim.getInstance().registerRobot(
+                Units.inchesToMeters(28), // from left to right
+                Units.inchesToMeters(27), // from front to back
+                Units.inchesToMeters(6), 
+                () -> drivetrain.getPose(), 
+                () -> drivetrain.getFieldRelativeSpeeds());
+        }
+        FuelSim.getInstance().start();
     }
 
     private void configureBindings() {
@@ -99,6 +114,9 @@ public class Robot extends TimedRobot {
         joystick.leftBumper().onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
 
         drivetrain.registerTelemetry(logger::telemeterize);
+    }
+    public void consumePhotonVisionMeasurement(LoggableRobotPose pose) {
+        drivetrain.addVisionMeasurement(pose.estimatedPose.toPose2d(), pose.timestampSeconds);
     }
 
     public Command getAutonomousCommand() {
@@ -185,5 +203,7 @@ public class Robot extends TimedRobot {
 
     @Override
     public void simulationPeriodic() {
+        FuelSim.getInstance().updateSim();
+
     }
 }

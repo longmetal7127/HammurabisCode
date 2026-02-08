@@ -15,14 +15,13 @@ import com.revrobotics.spark.config.SparkFlexConfig;
 import edu.wpi.first.epilogue.Logged;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.util.Units;
-import edu.wpi.first.wpilibj.simulation.ElevatorSim;
 import edu.wpi.first.wpilibj.simulation.RoboRioSim;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.util.TiltedElevatorSim;
 
 /**
- * Elevator subsystem using SparkFlex with NEO motor
+ * Lintake subsystem using SparkFlex with NEO motor
  */
 @Logged(name = "Lintake")
 public class Lintake extends SubsystemBase {
@@ -56,27 +55,21 @@ public class Lintake extends SubsystemBase {
   private final SparkClosedLoopController sparkPidController;
 
   // Simulation
-  private final TiltedElevatorSim elevatorSim;
+  private final TiltedElevatorSim intakeSim;
 
   /**
-   * Creates a new Elevator Subsystem.
+   * Creates a new Lintake Subsystem.
    */
   public Lintake() {
-    // Initialize motor controller
     SparkFlexConfig motorConfig = new SparkFlexConfig();
     motor = new SparkFlex(canID, MotorType.kBrushless);
     motorConfig.idleMode(brakeMode ? IdleMode.kBrake : IdleMode.kCoast);
 
-    // Configure encoder
     encoder = motor.getEncoder();
     encoder.setPosition(0);
 
-    // Set ramp rates
-
-    //Set current limits
     motorConfig.smartCurrentLimit(statorCurrentLimit);
 
-    // Configure Feedback and Feedforward
     sparkPidController = motor.getClosedLoopController();
     motorConfig.closedLoop
       .feedbackSensor(FeedbackSensor.kPrimaryEncoder)
@@ -84,12 +77,9 @@ public class Lintake extends SubsystemBase {
     motorConfig.closedLoop.feedForward.kS(kS).kV(kV).kA(kA);
     motorConfig.closedLoop.feedForward.kG(kG);
 
-    // Configure Encoder Gear Ratio
     motorConfig.encoder
       .positionConversionFactor(1 / gearRatio)
-      .velocityConversionFactor((1 / gearRatio) / 60); // Covnert RPM to RPS
-
-    // Save configuration
+      .velocityConversionFactor((1 / gearRatio) / 60); 
     motor.configure(
       motorConfig,
       ResetMode.kResetSafeParameters,
@@ -98,15 +88,15 @@ public class Lintake extends SubsystemBase {
     motorSim = new SparkSim(motor, dcMotor);
 
     // Initialize simulation
-    elevatorSim = new TiltedElevatorSim(
-      dcMotor, // Motor type
+    intakeSim = new TiltedElevatorSim(
+      dcMotor,
       gearRatio,
-      Units.lbsToKilograms(12.58), // Carriage mass (kg)
-      drumRadius, // Drum radius (m)
-      0, // Min height (m)
-      1, // Max height (m)
-      true, // Simulate gravity
-      0 // Starting height (m)
+      Units.lbsToKilograms(12.58), 
+      drumRadius, 
+      0, 
+      1, 
+      true, 
+      0 
     );
   }
 
@@ -124,22 +114,15 @@ public class Lintake extends SubsystemBase {
     // Meters to Rotations Ratio
     double positionToRotations = (1 / (2.0 * Math.PI * drumRadius)) * gearRatio;
 
-    // Set input voltage from motor controller to simulation
-    // Note: This may need to be talonfx.getSimState().getMotorVoltage() as the input
-    //elevatorSim.setInput(dcMotor.getVoltage(dcMotor.getTorque(elevatorSim.getCurrentDrawAmps()), elevatorSim.getVelocityMetersPerSecond() * positionToRotations * 2 * Math.PI));
-    // elevatorSim.setInput(getVoltage());
 
     // Use getVoltage() for other controllers
-    elevatorSim.setInput(getVoltage());
+    intakeSim.setInput(getVoltage());
 
     // Update simulation by 20ms
-    elevatorSim.update(0.020);
+    intakeSim.update(0.020);
 
-    // Convert meters to motor rotations
-    double motorPosition =
-      elevatorSim.getPositionMeters() * positionToRotations;
     double motorVelocity =
-      elevatorSim.getVelocityMetersPerSecond() * positionToRotations;
+      intakeSim.getVelocityMetersPerSecond() * positionToRotations;
 
     motorSim.iterate(motorVelocity * 60, RoboRioSim.getVInVoltage(), 0.02);
   }
@@ -189,7 +172,7 @@ public class Lintake extends SubsystemBase {
   }
 
   /**
-   * Set elevator position.
+   * Set intake position.
    * @param position The target position in meters
    */
   public void setPosition(double position) {
@@ -197,7 +180,7 @@ public class Lintake extends SubsystemBase {
   }
 
   /**
-   * Set elevator position with acceleration.
+   * Set intake position with acceleration.
    * @param position The target position in meters
    * @param acceleration The acceleration in meters per second squared
    */
@@ -213,7 +196,7 @@ public class Lintake extends SubsystemBase {
   }
 
   /**
-   * Set elevator velocity.
+   * Set intake velocity.
    * @param velocity The target velocity in meters per second
    */
   public void setVelocity(double velocity) {
@@ -221,7 +204,7 @@ public class Lintake extends SubsystemBase {
   }
 
   /**
-   * Set elevator velocity with acceleration.
+   * Set intake velocity with acceleration.
    * @param velocity The target velocity in meters per second
    * @param acceleration The acceleration in meters per second squared
    */
@@ -245,11 +228,11 @@ public class Lintake extends SubsystemBase {
   }
 
   /**
-   * Get the elevator simulation for testing.
-   * @return The elevator simulation model
+   * Get the intake simulation for testing.
+   * @return The intake simulation model
    */
   public TiltedElevatorSim getSimulation() {
-    return elevatorSim;
+    return intakeSim;
   }
 
   public double getMinHeightMeters() {
@@ -261,18 +244,18 @@ public class Lintake extends SubsystemBase {
   }
 
   /**
-   * Creates a command to set the elevator to a specific height.
+   * Creates a command to set the intake to a specific height.
    * @param heightMeters The target height in meters
-   * @return A command that sets the elevator to the specified height
+   * @return A command that sets the intake to the specified height
    */
   public Command setHeightCommand(double heightMeters) {
     return runOnce(() -> setPosition(heightMeters));
   }
 
   /**
-   * Creates a command to move the elevator to a specific height with a profile.
+   * Creates a command to move the intake to a specific height with a profile.
    * @param heightMeters The target height in meters
-   * @return A command that moves the elevator to the specified height
+   * @return A command that moves the intake to the specified height
    */
   public Command moveToHeightCommand(double heightMeters) {
     return run(() -> {
@@ -288,17 +271,17 @@ public class Lintake extends SubsystemBase {
   }
 
   /**
-   * Creates a command to stop the elevator.
-   * @return A command that stops the elevator
+   * Creates a command to stop the intake.
+   * @return A command that stops the intake
    */
   public Command stopCommand() {
     return runOnce(() -> setVelocity(0));
   }
 
   /**
-   * Creates a command to move the elevator at a specific velocity.
+   * Creates a command to move the intake at a specific velocity.
    * @param velocityMetersPerSecond The target velocity in meters per second
-   * @return A command that moves the elevator at the specified velocity
+   * @return A command that moves the intake at the specified velocity
    */
   public Command moveAtVelocityCommand(double velocityMetersPerSecond) {
     return run(() -> setVelocity(velocityMetersPerSecond));

@@ -9,11 +9,19 @@ import static edu.wpi.first.units.Units.RadiansPerSecond;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
 
 import com.ctre.phoenix6.HootAutoReplay;
+import com.ctre.phoenix6.HootEpilogueBackend;
+import com.ctre.phoenix6.Utils;
 import com.ctre.phoenix6.swerve.SwerveModule.DriveRequestType;
 import com.ctre.phoenix6.swerve.SwerveRequest;
 
+import edu.wpi.first.epilogue.Epilogue;
+import edu.wpi.first.epilogue.Logged;
+import edu.wpi.first.epilogue.logging.EpilogueBackend;
+import edu.wpi.first.epilogue.logging.NTEpilogueBackend;
+import edu.wpi.first.epilogue.logging.errors.ErrorHandler;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.util.Units;
+import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -24,10 +32,14 @@ import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
+import frc.robot.subsystems.Flywheel;
+import frc.robot.subsystems.Indexer;
+import frc.robot.subsystems.Lintake;
 import frc.robot.util.FuelSim;
 import frc.robot.vision.LoggableRobotPose;
 import frc.robot.vision.PhotonVisionSystem;
 
+@Logged
 public class Robot extends TimedRobot {
 
     private double MaxSpeed = 1.0 * TunerConstants.kSpeedAt12Volts.in(MetersPerSecond); // kSpeedAt12Volts desired top
@@ -47,16 +59,35 @@ public class Robot extends TimedRobot {
     private final CommandXboxController joystick = new CommandXboxController(0);
 
     public final CommandSwerveDrivetrain drivetrain = TunerConstants.createDrivetrain();
-    public final PhotonVisionSystem vision = new PhotonVisionSystem(this::consumePhotonVisionMeasurement, () -> drivetrain.getState().Pose);
+    public final PhotonVisionSystem vision = new PhotonVisionSystem(this::consumePhotonVisionMeasurement,
+            () -> drivetrain.getState().Pose);
 
     private Command m_autonomousCommand;
-
+    public Lintake lintake = new Lintake();
+    public Indexer indexer = new Indexer();
+    public Flywheel flywheel = new Flywheel();
     /* log and replay timestamp and joystick data */
     private final HootAutoReplay m_timeAndJoystickReplay = new HootAutoReplay()
             .withTimestampReplay()
             .withJoystickReplay();
 
     public Robot() {
+        Epilogue.configure(config -> {
+            // Log to both the Phoenix 6 SignalLogger
+            // and NT4 backends
+            config.backend = EpilogueBackend.multi(
+                    new HootEpilogueBackend(),
+                    new NTEpilogueBackend(NetworkTableInstance.getDefault()));
+
+            if (Utils.isSimulation()) {
+                // Re-throw any errors that occur in simulation
+                config.errorHandler = ErrorHandler.crashOnError();
+            }
+
+            // ...
+        });
+        Epilogue.bind(this);
+
         CommandScheduler.getInstance().onCommandInitialize(CommandsLogging::commandStarted);
         CommandScheduler.getInstance().onCommandFinish(CommandsLogging::commandEnded);
         CommandScheduler.getInstance()
@@ -69,13 +100,13 @@ public class Robot extends TimedRobot {
 
         configureBindings();
         if (Robot.isSimulation()) {
-        FuelSim.getInstance().spawnStartingFuel();
-        FuelSim.getInstance().registerRobot(
-                Units.inchesToMeters(28), // from left to right
-                Units.inchesToMeters(27), // from front to back
-                Units.inchesToMeters(6), 
-                () -> drivetrain.getPose(), 
-                () -> drivetrain.getFieldRelativeSpeeds());
+            FuelSim.getInstance().spawnStartingFuel();
+            FuelSim.getInstance().registerRobot(
+                    Units.inchesToMeters(28), // from left to right
+                    Units.inchesToMeters(27), // from front to back
+                    Units.inchesToMeters(6),
+                    () -> drivetrain.getPose(),
+                    () -> drivetrain.getFieldRelativeSpeeds());
         }
         FuelSim.getInstance().start();
     }
@@ -115,6 +146,7 @@ public class Robot extends TimedRobot {
 
         drivetrain.registerTelemetry(logger::telemeterize);
     }
+
     public void consumePhotonVisionMeasurement(LoggableRobotPose pose) {
         drivetrain.addVisionMeasurement(pose.estimatedPose.toPose2d(), pose.timestampSeconds);
     }

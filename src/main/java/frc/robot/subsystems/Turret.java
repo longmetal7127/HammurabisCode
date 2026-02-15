@@ -1,9 +1,15 @@
 package frc.robot.subsystems;
 
 import static edu.wpi.first.units.Units.Degrees;
+import static edu.wpi.first.units.Units.Radians;
+import static edu.wpi.first.units.Units.RadiansPerSecond;
 import static edu.wpi.first.units.Units.Rotations;
+import static edu.wpi.first.units.Units.RotationsPerSecond;
+
+import java.util.Optional;
 
 import com.revrobotics.RelativeEncoder;
+import com.revrobotics.sim.SparkRelativeEncoderSim;
 import com.revrobotics.spark.ClosedLoopSlot;
 import com.revrobotics.spark.FeedbackSensor;
 import com.revrobotics.spark.SparkBase.ControlType;
@@ -13,100 +19,131 @@ import com.revrobotics.spark.SparkClosedLoopController;
 import com.revrobotics.spark.SparkFlex;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.SparkSim;
+import com.revrobotics.spark.config.MAXMotionConfig.MAXMotionPositionMode;
 import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
 import com.revrobotics.spark.config.SparkFlexConfig;
 import edu.wpi.first.epilogue.Logged;
-import edu.wpi.first.math.numbers.N1;
-import edu.wpi.first.math.numbers.N2;
-import edu.wpi.first.math.system.LinearSystem;
+import edu.wpi.first.math.controller.ArmFeedforward;
+import edu.wpi.first.math.geometry.Pose3d;
+import edu.wpi.first.math.geometry.Rotation3d;
+import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.system.plant.DCMotor;
-import edu.wpi.first.math.system.plant.LinearSystemId;
+import edu.wpi.first.math.util.Units;
 import edu.wpi.first.units.measure.Angle;
 import edu.wpi.first.wpilibj.DutyCycleEncoder;
 import edu.wpi.first.wpilibj.RobotController;
+import edu.wpi.first.wpilibj.simulation.BatterySim;
 import edu.wpi.first.wpilibj.simulation.DutyCycleEncoderSim;
-import edu.wpi.first.wpilibj.simulation.LinearSystemSim;
+import edu.wpi.first.wpilibj.simulation.RoboRioSim;
+import edu.wpi.first.wpilibj.simulation.SingleJointedArmSim;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.Robot;
 import frc.robot.util.CRTSolver;
 import frc.robot.util.CRTSolverConfig;
-import java.util.Optional;
 
 /**
- * Turret subsystem using SparkFlex with NEO Vortex motor. Position is initialized using CRTSolver
- * with two REV through bore encoders.
+ * Pivot subsystem using SparkFlex with NEO motor
  */
 @Logged(name = "Turret")
 public class Turret extends SubsystemBase {
 
-  private final DCMotor dcMotor = DCMotor.getNeoVortex(1);
+  // Constants
+  private final DCMotor dcMotor = DCMotor.getNEO(1);
   private final int canID = 20;
-  
+
   private final int platterGearTeeth = 90;
   private final int encoder1Teeth = 19;
   private final int encoder2Teeth = 9;
-  private final double gearRatio = 34.5; 
-  
-  private final double kP = 0.5;
-  private final double kI = 0.0;
-  private final double kD = 0.0;
-  private final double kS = 0.0;
-  private final double kV = 0.0;
-  private final double kA = 0.0;
-  
-  private final int statorCurrentLimit = 40;
-  
-  private final double minAngleDegrees = -180.0;
-  private final double maxAngleDegrees = 180.0;
-  
+  private final double gearRatio = 34.5;
 
-  private final int encoder1Port = 0; 
-  private final int encoder2Port = 1; 
+  private final double kP = 1.84;
+  private final double kI = 0;
+  private final double kD = 0;
+  private final double kS = 0;
+  private final double kV = 3.64;
+  private final double kA = 0.09;
+  private final double maxVelocity = .5;
+  private final double maxAcceleration = 1;
+  private final boolean brakeMode = true;
 
 
+  // Motor controller
   private final SparkFlex motor;
   private final RelativeEncoder encoder;
   private final SparkSim motorSim;
   private final SparkClosedLoopController sparkPidController;
 
+  private final double minAngleDegrees = -180.0;
+  private final double maxAngleDegrees = 180.0;
 
+  private final int encoder1Port = 0;
+  private final int encoder2Port = 1;
+
+  // Simulation
+  private final SingleJointedArmSim pivotSim;
+
+  private final CRTSolver crtSolver;
+  private boolean positionInitialized = false;
   private final DutyCycleEncoder absoluteEncoder1;
   private final DutyCycleEncoder absoluteEncoder2;
   private final DutyCycleEncoderSim absoluteEncoder1Sim;
   private final DutyCycleEncoderSim absoluteEncoder2Sim;
-  
-  private final CRTSolver crtSolver;
-  private boolean positionInitialized = false;
 
-  private final LinearSystem<N2, N1, N2> turretSystem;
-  private final LinearSystemSim<N2, N1, N2> turretSim;
+  public double setpoint = 0.0;
 
+  /**
+   * Creates a new Pivot Subsystem.
+   */
   public Turret() {
+    // Initialize motor controller
     SparkFlexConfig motorConfig = new SparkFlexConfig();
     motor = new SparkFlex(canID, MotorType.kBrushless);
-    motorConfig.idleMode(IdleMode.kBrake);
-    motorConfig.smartCurrentLimit(statorCurrentLimit);
+    motorConfig.idleMode(brakeMode ? IdleMode.kBrake : IdleMode.kCoast);
 
+    // Configure encoder
     encoder = motor.getEncoder();
+    encoder.setPosition(0);
+
+    // Set current limits
+    motorConfig.smartCurrentLimit(40);
+
+    // Configure Feedback and Feedforward
     sparkPidController = motor.getClosedLoopController();
-    
     motorConfig.closedLoop
         .feedbackSensor(FeedbackSensor.kPrimaryEncoder)
         .pid(kP, kI, kD, ClosedLoopSlot.kSlot0);
     motorConfig.closedLoop.feedForward.kS(kS).kV(kV).kA(kA);
+    motorConfig.closedLoop.feedForward.kG(0);
+    motorConfig.closedLoop.maxMotion
+        .cruiseVelocity(maxVelocity)
+        .positionMode(MAXMotionPositionMode.kMAXMotionTrapezoidal)
+        .allowedProfileError(0.02)
+        .maxAcceleration(maxAcceleration);
 
+    // Configure Encoder Gear Ratio
     motorConfig.encoder
-        .positionConversionFactor(360.0 / gearRatio)
-        .velocityConversionFactor(360.0 / gearRatio / 60.0); 
+        .positionConversionFactor(1 / gearRatio)
+        .velocityConversionFactor((1 / gearRatio) / 60); // Covnert RPM to RPS
 
-    motorConfig.softLimit
-        .forwardSoftLimit(maxAngleDegrees)
-        .forwardSoftLimitEnabled(true)
-        .reverseSoftLimit(minAngleDegrees)
-        .reverseSoftLimitEnabled(true);
-
-    motor.configure(motorConfig, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
+    // Save configuration
+    motor.configure(
+        motorConfig,
+        ResetMode.kResetSafeParameters,
+        PersistMode.kPersistParameters);
     motorSim = new SparkSim(motor, dcMotor);
+
+    // Initialize simulation
+    pivotSim = new SingleJointedArmSim(
+        dcMotor, // Motor type
+        gearRatio,
+        0.01, // Arm moment of inertia - Small value since there are no arm parameters
+        0.1, // Arm length (m) - Small value since there are no arm parameters
+        Units.degreesToRadians(-90), // Min angle (rad)
+        Units.degreesToRadians(90), // Max angle (rad)
+        false, // Simulate gravity - Disable gravity for pivot
+        Units.degreesToRadians(0) // Starting position (rad)
+    );
 
     absoluteEncoder1 = new DutyCycleEncoder(encoder1Port);
     absoluteEncoder2 = new DutyCycleEncoder(encoder2Port);
@@ -115,31 +152,30 @@ public class Turret extends SubsystemBase {
 
     CRTSolverConfig crtConfig = new CRTSolverConfig(
         () -> Rotations.of(absoluteEncoder1.get()),
-        () -> Rotations.of(absoluteEncoder2.get())
-    );
-    
+        () -> Rotations.of(absoluteEncoder2.get()));
+
     crtConfig
         .withCommonDriveGear(
             34.5,
             platterGearTeeth,
-            encoder1Teeth,       
-            encoder2Teeth
-        )
+            encoder1Teeth,
+            encoder2Teeth)
         .withMechanismRange(
             Degrees.of(minAngleDegrees),
-            Degrees.of(maxAngleDegrees)
-        )
-        .withMatchTolerance(Rotations.of(0.03)); 
-    
+            Degrees.of(maxAngleDegrees))
+        .withMatchTolerance(Rotations.of(0.03));
+
     crtSolver = new CRTSolver(crtConfig);
 
-    turretSystem = LinearSystemId.createDCMotorSystem(dcMotor, 0.095624, gearRatio);
-    turretSim = new LinearSystemSim<>(turretSystem);
   }
+
+  /**
+   * Update simulation and telemetry.
+   */
 
   @Override
   public void periodic() {
-    if (!positionInitialized) {
+    if (!positionInitialized && !Robot.isSimulation()) {
       Optional<Angle> solvedAngle = crtSolver.getAngleOptional();
       if (solvedAngle.isPresent()) {
         double angleDegrees = solvedAngle.get().in(Degrees);
@@ -157,226 +193,191 @@ public class Turret extends SubsystemBase {
     }
   }
 
+  /**
+   * Update simulation.
+   */
   @Override
   public void simulationPeriodic() {
-    double voltage = motor.getAppliedOutput() * motor.getBusVoltage();
-    
-    turretSim.setInput(voltage);
-    turretSim.update(0.02);
-    
-    double turretAngleRad = turretSim.getOutput(0); 
-    double turretVelocityRadPerSec = turretSim.getOutput(1);
-    
-    double turretAngleRotations = turretAngleRad / (2.0 * Math.PI);
-    
-    double encoder1Reading = turretAngleRotations * platterGearTeeth / encoder1Teeth;
-    double encoder2Reading = turretAngleRotations * platterGearTeeth / encoder2Teeth;
-    
-    encoder1Reading = encoder1Reading - Math.floor(encoder1Reading);
-    encoder2Reading = encoder2Reading - Math.floor(encoder2Reading);
-    
-    absoluteEncoder1Sim.set(encoder1Reading);
-    absoluteEncoder2Sim.set(encoder2Reading);
-    
-    double turretVelocityDegreesPerSec = Math.toDegrees(turretVelocityRadPerSec);
-    motorSim.iterate(turretVelocityDegreesPerSec * 60 / 360, RobotController.getBatteryVoltage(), 0.02);
+    // Set input voltage from motor controller to simulation
+    // Note: This may need to be talonfx.getSimState().getMotorVoltage() as the
+    // input
+    // pivotSim.setInput(dcMotor.getVoltage(dcMotor.getTorque(pivotSim.getCurrentDrawAmps()),
+    // pivotSim.getVelocityRadPerSec()));
+    // pivotSim.setInput(getVoltage());
+    // Set input voltage from motor controller to simulation
+    // Use getVoltage() for other controllers
+    pivotSim.setInput(getVoltage());
+
+    // Update simulation by 20ms
+    pivotSim.update(0.020);
+    RoboRioSim.setVInVoltage(
+        BatterySim.calculateDefaultBatteryLoadedVoltage(
+            pivotSim.getCurrentDrawAmps()));
+
+    double motorPosition = Radians.of(pivotSim.getAngleRads() * gearRatio).in(
+        Rotations);
+    double motorVelocity = RadiansPerSecond.of(
+        pivotSim.getVelocityRadPerSec()).in(RotationsPerSecond);
+    motorSim.iterate(motorVelocity, RoboRioSim.getVInVoltage(), 0.02);
   }
 
   /**
-   * Sets the turret angle setpoint in degrees.
-   * Clamps to [-180, 180] range for wire safety.
+   * Get the current position in Rotations.
    * 
-   * @param angleDegrees target angle in degrees
+   * @return Position in Rotations
    */
-  public void setAngle(double angleDegrees) {
-    if (positionInitialized) {
-      double clampedAngle = Math.max(minAngleDegrees, Math.min(maxAngleDegrees, angleDegrees));
-      sparkPidController.setSetpoint(clampedAngle, ControlType.kPosition, ClosedLoopSlot.kSlot0);
-    }
-  }
-
-
-  /**
-   * Sets motor voltage directly.
-   * 
-   * @param voltage voltage to apply
-   */
-  public void setVoltage(double voltage) {
-    motor.setVoltage(voltage);
-  }
-
-  /**
-   * Gets the current turret angle in degrees.
-   * 
-   * @return current angle in degrees
-   */
-  public double getAngleDegrees() {
+  @Logged(name = "Position/Rotations")
+  public double getPosition() {
+    // Rotations
     return encoder.getPosition();
   }
 
-  /**
-   * Gets the current turret velocity in degrees per second.
-   * 
-   * @return velocity in degrees per second
-   */
-  public double getVelocityDegreesPerSec() {
-    return encoder.getVelocity();
+  public double getPositionRadians() {
+    return Units.rotationsToRadians(getPosition());
+  }
+
+  public double getAngleDegrees() {
+    return Units.radiansToDegrees(getPositionRadians());
   }
 
   /**
-   * Gets the current applied voltage.
+   * Get the current velocity in rotations per second.
    * 
-   * @return applied voltage
+   * @return Velocity in rotations per second
    */
+  @Logged(name = "Velocity")
+  public double getVelocity() {
+    return encoder.getVelocity() / gearRatio / 60.0; // Convert from RPM to RPS
+  }
+
+  /**
+   * Get the current applied voltage.
+   * 
+   * @return Applied voltage
+   */
+  @Logged(name = "Voltage")
   public double getVoltage() {
     return motor.getAppliedOutput() * motor.getBusVoltage();
   }
 
   /**
-   * Gets the current motor current in amps.
+   * Get the current motor current.
    * 
-   * @return motor current in amps
+   * @return Motor current in amps
    */
   public double getCurrent() {
     return motor.getOutputCurrent();
   }
 
   /**
-   * Gets the current motor temperature in Celsius.
+   * Get the current motor temperature.
    * 
-   * @return motor temperature in Celsius
+   * @return Motor temperature in Celsius
    */
   public double getTemperature() {
     return motor.getMotorTemperature();
   }
 
   /**
-   * Returns whether the turret position has been initialized.
+   * Set pivot angle with acceleration.
    * 
-   * @return true if position is initialized
+   * @param angleDegrees The target angle in degrees
+   * @param acceleration The acceleration in rad/s²
    */
-  public boolean isPositionInitialized() {
-    return positionInitialized;
+  public void setAngle(double angleDegrees) {
+    // Convert degrees to rotations
+    double angleRotations = Units.degreesToRotations(angleDegrees);
+    setpoint = angleDegrees;
+    sparkPidController.setSetpoint(
+        angleRotations,
+        ControlType.kMAXMotionPositionControl,
+        ClosedLoopSlot.kSlot0);
   }
 
   /**
-   * Gets the CRT solver status.
+   * Set pivot angular velocity.
    * 
-   * @return last CRT solver status
+   * @param velocityDegPerSec The target velocity in degrees per second
    */
-  public CRTSolver.CRTStatus getCRTStatus() {
-    return crtSolver.getLastStatus();
+  public void setVelocity(double velocityDegPerSec) {
+    setVelocity(velocityDegPerSec, 0);
   }
 
   /**
-   * Gets the minimum angle limit in degrees.
+   * Set pivot angular velocity with acceleration.
    * 
-   * @return minimum angle in degrees
+   * @param velocityDegPerSec The target velocity in degrees per second
+   * @param acceleration      The acceleration in degrees per second squared
    */
-  public double getMinAngleDegrees() {
-    return minAngleDegrees;
+  public void setVelocity(double velocityDegPerSec, double acceleration) {
+    // Convert degrees/sec to rotations/sec
+    double velocityRadPerSec = Units.degreesToRadians(velocityDegPerSec);
+    double velocityRotations = velocityRadPerSec / (2.0 * Math.PI);
+
+    sparkPidController.setSetpoint(
+        velocityRotations,
+        ControlType.kVelocity,
+        ClosedLoopSlot.kSlot0);
   }
 
   /**
-   * Gets the maximum angle limit in degrees.
+   * Set motor voltage directly.
    * 
-   * @return maximum angle in degrees
+   * @param voltage The voltage to apply
    */
-  public double getMaxAngleDegrees() {
-    return maxAngleDegrees;
+  public void setVoltage(double voltage) {
+    motor.setVoltage(voltage);
   }
 
   /**
-   * Checks if turret is within tolerance of target angle.
+   * Get the pivot simulation for testing.
    * 
-   * @param targetAngleDegrees target angle in degrees
-   * @param toleranceDegrees tolerance in degrees
-   * @return true if within tolerance
+   * @return The pivot simulation model
    */
-  public boolean isAtAngle(double targetAngleDegrees, double toleranceDegrees) {
-    return Math.abs(getAngleDegrees() - targetAngleDegrees) < toleranceDegrees;
+  public SingleJointedArmSim getSimulation() {
+    return pivotSim;
   }
 
   /**
-   * Stops the turret motor.
-   */
-  public void stop() {
-    motor.stopMotor();
-  }
-
-  /**
-   * Gets the turret simulation for testing.
+   * Creates a command to set the pivot to a specific angle.
    * 
-   * @return turret simulation model
-   */
-  public LinearSystemSim<N2, N1, N2> getSimulation() {
-    return turretSim;
-  }
-
-  /**
-   * Command to set turret to a specific angle.
-   * 
-   * @param angleDegrees target angle in degrees
-   * @return command that sets the angle
+   * @param angleDegrees The target angle in degrees
+   * @return A command that sets the pivot to the specified angle
    */
   public Command setAngleCommand(double angleDegrees) {
-    return runOnce(() -> setAngle(angleDegrees))
-        .withName("Turret.SetAngle(" + angleDegrees + ")");
+    return runOnce(() -> setAngle(angleDegrees));
   }
 
-  /**
-   * Command to move turret to a specific angle using a supplier.
-   * 
-   * @param angleSupplier supplier that returns target angle in degrees
-   * @return command that continuously updates the setpoint
-   */
-  public Command trackAngleCommand(java.util.function.Supplier<Double> angleSupplier) {
-    return run(() -> setAngle(angleSupplier.get()))
-        .withName("Turret.TrackAngle");
-  }
 
   /**
-   * Command to move turret to angle and wait until it reaches the target.
+   * Creates a command to stop the pivot.
    * 
-   * @param angleDegrees target angle in degrees
-   * @param toleranceDegrees tolerance in degrees (default 2.0)
-   * @return command that finishes when at target
-   */
-  public Command moveToAngleCommand(double angleDegrees, double toleranceDegrees) {
-    return run(() -> setAngle(angleDegrees))
-        .until(() -> isAtAngle(angleDegrees, toleranceDegrees))
-        .withName("Turret.MoveToAngle(" + angleDegrees + ")");
-  }
-
-  /**
-   * Command to move turret to angle and wait until it reaches the target (2 degree tolerance).
-   * 
-   * @param angleDegrees target angle in degrees
-   * @return command that finishes when at target
-   */
-  public Command moveToAngleCommand(double angleDegrees) {
-    return moveToAngleCommand(angleDegrees, 2.0);
-  }
-
-  /**
-   * Command to stop the turret.
-   * 
-   * @return command to run
+   * @return A command that stops the pivot
    */
   public Command stopCommand() {
-    return runOnce(this::stop)
-        .withName("Turret.Stop");
+    return runOnce(() -> setVelocity(0));
   }
 
   /**
-   * Command to home/zero the turret to center position (0 degrees).
+   * Creates a command to move the pivot at a specific velocity.
    * 
-   * @return command to run
+   * @param velocityDegPerSec The target velocity in degrees per second
+   * @return A command that moves the pivot at the specified velocity
    */
-  public Command homeCommand() {
-    return moveToAngleCommand(0.0)
-        .withName("Turret.Home");
+  public Command moveAtVelocityCommand(double velocityDegPerSec) {
+    return run(() -> setVelocity(velocityDegPerSec));
   }
 
+  /**
+   * Gets the 3D pose of the turret mechanism for visualization.
+   * The turret rotates around the Z axis (yaw).
+   * 
+   * @return Pose3d representing the turret's position and orientation
+   */
+  public Pose3d getMechanismPose() {
+    return new Pose3d(
+        new Translation3d(0.1651, 0.1016, 0.3349752),
+        new Rotation3d(0, 0, Math.toRadians(getAngleDegrees())));
+  }
 
 }

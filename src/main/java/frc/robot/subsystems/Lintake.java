@@ -4,15 +4,21 @@ import com.revrobotics.RelativeEncoder;
 import com.revrobotics.spark.ClosedLoopSlot;
 import com.revrobotics.spark.FeedbackSensor;
 import com.revrobotics.spark.SparkBase.ControlType;
-import com.revrobotics.spark.SparkBase.PersistMode;
-import com.revrobotics.spark.SparkBase.ResetMode;
+import com.revrobotics.PersistMode;
+import com.revrobotics.ResetMode;
 import com.revrobotics.spark.SparkClosedLoopController;
 import com.revrobotics.spark.SparkFlex;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.SparkSim;
 import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
 import com.revrobotics.spark.config.SparkFlexConfig;
+import com.revrobotics.spark.config.MAXMotionConfig.MAXMotionPositionMode;
+
 import edu.wpi.first.epilogue.Logged;
+import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.geometry.Pose3d;
+import edu.wpi.first.math.geometry.Rotation3d;
+import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.simulation.RoboRioSim;
@@ -29,21 +35,21 @@ public class Lintake extends SubsystemBase {
   // Constants
   private final DCMotor dcMotor = DCMotor.getNeoVortex(1);
   private final int canID = 1;
-  // TODO: Gear ratio is not populated
-  private final double gearRatio = 15;
-  private final double kP = 1;
+  private final double gearRatio = 5;
+  private final double kP = 0.75;
   private final double kI = 0;
   private final double kD = 0;
   private final double kS = 0;
-  private final double kV = 0;
+  private final double kV = 6.61;
   private final double kA = 0;
-  private final double kG = 0;
-  private final double maxVelocity = 1; // meters per second
+  private final double kG = -0.02;
+  private final double maxVelocity = 1;
+  private final double maxAcceleration = 2;
   private final boolean brakeMode = true;
   private final int statorCurrentLimit = 40;
-  private final double drumRadius = 0.0254; // meters
-  private final double minheight = 0;
-  private final double maxheight = 1;
+  private final double drumRadius = Units.inchesToMeters(0.5); // meters
+  private final double minHeight = 0;
+  private final double maxHeight = 0.462788;
 
   // Feedforward
 
@@ -73,13 +79,17 @@ public class Lintake extends SubsystemBase {
     sparkPidController = motor.getClosedLoopController();
     motorConfig.closedLoop
       .feedbackSensor(FeedbackSensor.kPrimaryEncoder)
-      .pid(kP, kI, kD, ClosedLoopSlot.kSlot0);
+      .pid(kP, kI, kD, ClosedLoopSlot.kSlot0).outputRange(-1, 1);
     motorConfig.closedLoop.feedForward.kS(kS).kV(kV).kA(kA);
     motorConfig.closedLoop.feedForward.kG(kG);
+    motorConfig.closedLoop.maxMotion.cruiseVelocity(maxVelocity);
+    motorConfig.closedLoop.maxMotion.positionMode(MAXMotionPositionMode.kMAXMotionTrapezoidal).allowedProfileError(0.02).maxAcceleration(maxAcceleration); 
 
+    // Conversion: motor rotations -> meters, motor RPM -> m/s
+    double metersPerMotorRotation = (2.0 * Math.PI * drumRadius) / gearRatio;
     motorConfig.encoder
-      .positionConversionFactor(1 / gearRatio)
-      .velocityConversionFactor((1 / gearRatio) / 60); 
+      .positionConversionFactor(metersPerMotorRotation)
+      .velocityConversionFactor(metersPerMotorRotation / 60.0); 
     motor.configure(
       motorConfig,
       ResetMode.kResetSafeParameters,
@@ -111,39 +121,36 @@ public class Lintake extends SubsystemBase {
    */
   @Override
   public void simulationPeriodic() {
-    // Meters to Rotations Ratio
-    double positionToRotations = (1 / (2.0 * Math.PI * drumRadius)) * gearRatio;
-
-
     // Use getVoltage() for other controllers
     intakeSim.setInput(getVoltage());
 
     // Update simulation by 20ms
     intakeSim.update(0.020);
 
-    double motorVelocity =
-      intakeSim.getVelocityMetersPerSecond() * positionToRotations;
 
-    motorSim.iterate(motorVelocity * 60, RoboRioSim.getVInVoltage(), 0.02);
+    motorSim.iterate(intakeSim.getVelocityMetersPerSecond(), 12, 0.02);
   }
 
   /**
-   * Get the current position in the Rotations.
-   * @return Position in Rotations
+   * Get the current position in meters.
+   * @return Position in meters
    */
-  @Logged(name = "Position/Rotations")
+  @Logged(name = "Position/Meters")
   public double getPosition() {
-    // Rotations
-    return encoder.getPosition() / gearRatio;
+    // Encoder already returns meters via conversion factor
+    return encoder.getPosition();
   }
 
+
+
   /**
-   * Get the current velocity in rotations per second.
-   * @return Velocity in rotations per second
+   * Get the current velocity in meters per second.
+   * @return Velocity in meters per second
    */
   @Logged(name = "Velocity")
   public double getVelocity() {
-    return encoder.getVelocity() / gearRatio / 60.0; // Convert from RPM to RPS
+    // Encoder already returns m/s via conversion factor
+    return encoder.getVelocity();
   }
 
   /**
@@ -176,6 +183,7 @@ public class Lintake extends SubsystemBase {
    * @param position The target position in meters
    */
   public void setPosition(double position) {
+    System.out.println("Setting position to " + position + " meters");
     setPosition(position, 0);
   }
 
@@ -185,11 +193,9 @@ public class Lintake extends SubsystemBase {
    * @param acceleration The acceleration in meters per second squared
    */
   public void setPosition(double position, double acceleration) {
-    // Convert meters to rotations
-    double positionRotations = position / (2.0 * Math.PI * drumRadius);
-
+    // Encoder units are already meters, pass directly
     sparkPidController.setSetpoint(
-      positionRotations,
+      position,
       ControlType.kMAXMotionPositionControl,
       ClosedLoopSlot.kSlot0
     );
@@ -209,11 +215,9 @@ public class Lintake extends SubsystemBase {
    * @param acceleration The acceleration in meters per second squared
    */
   public void setVelocity(double velocity, double acceleration) {
-    // Convert meters/sec to rotations/sec
-    double velocityRotations = velocity / (2.0 * Math.PI * drumRadius);
-
+    // Encoder units are already m/s, pass directly
     sparkPidController.setSetpoint(
-      velocityRotations,
+      velocity,
       ControlType.kVelocity,
       ClosedLoopSlot.kSlot0
     );
@@ -236,11 +240,11 @@ public class Lintake extends SubsystemBase {
   }
 
   public double getMinHeightMeters() {
-    return minheight;
+    return minHeight;
   }
 
   public double getMaxHeightMeters() {
-    return maxheight;
+    return maxHeight;
   }
 
   /**
@@ -250,24 +254,6 @@ public class Lintake extends SubsystemBase {
    */
   public Command setHeightCommand(double heightMeters) {
     return runOnce(() -> setPosition(heightMeters));
-  }
-
-  /**
-   * Creates a command to move the intake to a specific height with a profile.
-   * @param heightMeters The target height in meters
-   * @return A command that moves the intake to the specified height
-   */
-  public Command moveToHeightCommand(double heightMeters) {
-    return run(() -> {
-      double currentHeight = getPosition() * (2.0 * Math.PI * drumRadius);
-      double error = heightMeters - currentHeight;
-      double velocity =
-        Math.signum(error) * Math.min(Math.abs(error) * 2.0, maxVelocity);
-      setVelocity(velocity);
-    }).until(() -> {
-      double currentHeight = getPosition() * (2.0 * Math.PI * drumRadius);
-      return Math.abs(heightMeters - currentHeight) < 0.02; // 2cm tolerance
-    });
   }
 
   /**
@@ -285,5 +271,26 @@ public class Lintake extends SubsystemBase {
    */
   public Command moveAtVelocityCommand(double velocityMetersPerSecond) {
     return run(() -> setVelocity(velocityMetersPerSecond));
+  }
+
+  /**
+   * Gets the 3D pose of the intake mechanism for visualization.
+   * The intake is tilted 14.478 degrees below horizontal and extends out the front of the robot.
+   * @return Pose3d representing the intake's position and orientation
+   */
+  public Pose3d getMechanismPose() {
+    double currentHeightMeters = getPosition(); // already in meters
+    double tiltAngleDegrees = -14.478; 
+    
+    
+    // Create pose with translation and rotation
+    // Assuming intake base is at front center of robot
+    return new Pose3d(
+      new Translation3d(-currentHeightMeters, 0, 0).rotateBy(new Rotation3d(0, Math.toRadians(tiltAngleDegrees), 0)), // Base position + extension
+      new Rotation3d(Math.PI * 0.5, 0, 0) 
+    );
+  }
+  public boolean getIntakeEnabled() {
+    return MathUtil.isNear(getPosition(), maxHeight, 0.02);
   }
 }

@@ -4,6 +4,7 @@ import com.ctre.phoenix6.SignalLogger;
 import com.ctre.phoenix6.swerve.SwerveDrivetrain.SwerveDriveState;
 
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
@@ -56,6 +57,10 @@ public class Telemetry {
     private final DoubleArrayPublisher fieldPub = table.getDoubleArrayTopic("robotPose").publish();
     private final StringPublisher fieldTypePub = table.getStringTopic(".type").publish();
 
+    /* Mechanism poses for visualization */
+    private final NetworkTable mechanismTable = inst.getTable("MechanismPoses");
+    private final StructArrayPublisher<Pose3d> mechanismPoses = mechanismTable.getStructArrayTopic("Poses", Pose3d.struct).publish();
+    
     /* Mechanisms to represent the swerve module states */
     private final Mechanism2d[] m_moduleMechanisms = new Mechanism2d[] {
         new Mechanism2d(1, 1),
@@ -117,5 +122,17 @@ public class Telemetry {
             m_moduleDirections[i].setAngle(state.ModuleStates[i].angle);
             m_moduleSpeeds[i].setLength(state.ModuleStates[i].speedMetersPerSecond / (2 * MaxSpeed));
         }
+    }
+
+    /**
+     * Update mechanism poses for visualization in AdvantageScope.
+     * Index 0: Lintake (intake)
+     * Index 1: Turret
+     * 
+     * @param lintakePose 3D pose of the intake mechanism
+     * @param turretPose 3D pose of the turret mechanism
+     */
+    public void updateMechanismPoses(Pose3d lintakePose, Pose3d turretPose) {
+        mechanismPoses.set(new Pose3d[] { lintakePose, turretPose });
     }
 }

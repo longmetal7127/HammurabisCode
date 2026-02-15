@@ -27,7 +27,6 @@ import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.Commands;
-import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 import frc.robot.generated.TunerConstants;
@@ -35,6 +34,8 @@ import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.Flywheel;
 import frc.robot.subsystems.Indexer;
 import frc.robot.subsystems.Lintake;
+import frc.robot.subsystems.Turret;
+import frc.robot.util.CommandGamesirController;
 import frc.robot.util.FuelSim;
 import frc.robot.vision.LoggableRobotPose;
 import frc.robot.vision.PhotonVisionSystem;
@@ -56,7 +57,7 @@ public class Robot extends TimedRobot {
 
     private final Telemetry logger = new Telemetry(MaxSpeed);
 
-    private final CommandXboxController joystick = new CommandXboxController(0);
+    private final CommandGamesirController joystick = new frc.robot.util.CommandGamesirController(0);
 
     public final CommandSwerveDrivetrain drivetrain = TunerConstants.createDrivetrain();
     public final PhotonVisionSystem vision = new PhotonVisionSystem(this::consumePhotonVisionMeasurement,
@@ -64,6 +65,7 @@ public class Robot extends TimedRobot {
 
     private Command m_autonomousCommand;
     public Lintake lintake = new Lintake();
+    public Turret turret = new Turret();
     public Indexer indexer = new Indexer();
     public Flywheel flywheel = new Flywheel();
     /* log and replay timestamp and joystick data */
@@ -102,11 +104,21 @@ public class Robot extends TimedRobot {
         if (Robot.isSimulation()) {
             FuelSim.getInstance().spawnStartingFuel();
             FuelSim.getInstance().registerRobot(
-                    Units.inchesToMeters(28), // from left to right
-                    Units.inchesToMeters(27), // from front to back
+                    Units.inchesToMeters(25.5), // from left to right
+                    Units.inchesToMeters(29), // from front to back
                     Units.inchesToMeters(6),
                     () -> drivetrain.getPose(),
                     () -> drivetrain.getFieldRelativeSpeeds());
+
+            FuelSim.getInstance().registerIntake(
+                    Units.inchesToMeters(17.475),
+                    Units.inchesToMeters(27.117), 
+                    Units.inchesToMeters(-12.725),
+                    Units.inchesToMeters(-2.725), // robot-centric coordinates for bounding box in meters
+                    lintake::getIntakeEnabled // (optional) BooleanSupplier for whether the intake should be active at a
+                                              // given moment
+            ); 
+
         }
         FuelSim.getInstance().start();
     }
@@ -130,10 +142,6 @@ public class Robot extends TimedRobot {
         RobotModeTriggers.disabled().whileTrue(
                 drivetrain.applyRequest(() -> idle).ignoringDisable(true));
 
-        joystick.a().whileTrue(drivetrain.applyRequest(() -> brake));
-        joystick.b().whileTrue(drivetrain.applyRequest(
-                () -> point.withModuleDirection(new Rotation2d(-joystick.getLeftY(), -joystick.getLeftX()))));
-
         // Run SysId routines when holding back/start and X/Y.
         // Note that each routine should be run exactly once in a single log.
         joystick.back().and(joystick.y()).whileTrue(drivetrain.sysIdDynamic(Direction.kForward));
@@ -141,10 +149,20 @@ public class Robot extends TimedRobot {
         joystick.start().and(joystick.y()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kForward));
         joystick.start().and(joystick.x()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kReverse));
 
-        // Reset the field-centric heading on left bumper press.
         joystick.leftBumper().onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
 
         drivetrain.registerTelemetry(logger::telemeterize);
+
+        joystick.a().onTrue(lintake.setHeightCommand(0.0)); // Retract to minimum
+        joystick.b().onTrue(lintake.setHeightCommand(0.5)); // Mid position
+        joystick.x().onTrue(lintake.setHeightCommand(lintake.getMaxHeightMeters())); // Extend to maximum
+
+        joystick.povRight().onTrue(turret.setAngleCommand(50)); // Front (0 degrees)
+        joystick.povDown().onTrue(turret.setAngleCommand(0)); // Right side
+        joystick.povUp().onTrue(turret.setAngleCommand(9)); // Back
+        joystick.povLeft().onTrue(turret.setAngleCommand(10.0)); // Left side
+
+
     }
 
     public void consumePhotonVisionMeasurement(LoggableRobotPose pose) {
@@ -173,7 +191,7 @@ public class Robot extends TimedRobot {
         CommandScheduler.getInstance().run();
         CommandsLogging.logRunningCommands();
         CommandsLogging.logRequiredSubsystems();
-
+        logger.updateMechanismPoses(lintake.getMechanismPose(), turret.getMechanismPose());
     }
 
     @Override

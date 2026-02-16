@@ -132,7 +132,7 @@ public class Telemetry {
      * @param lintakePose 3D pose of the intake mechanism
      * @param turretPose 3D pose of the turret mechanism
      */
-    public void updateMechanismPoses(Pose3d lintakePose, Pose3d turretPose) {
-        mechanismPoses.set(new Pose3d[] { lintakePose, turretPose });
+    public void updateMechanismPoses(Pose3d lintakePose, Pose3d turretPose, Pose3d hoodPose) {
+        mechanismPoses.set(new Pose3d[] { lintakePose, turretPose, hoodPose });
     }
 }

@@ -8,6 +8,8 @@ import static edu.wpi.first.units.Units.MetersPerSecond;
 import static edu.wpi.first.units.Units.RadiansPerSecond;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
 
+import java.lang.reflect.Field;
+
 import com.ctre.phoenix6.HootAutoReplay;
 import com.ctre.phoenix6.HootEpilogueBackend;
 import com.ctre.phoenix6.Utils;
@@ -20,6 +22,7 @@ import edu.wpi.first.epilogue.logging.EpilogueBackend;
 import edu.wpi.first.epilogue.logging.NTEpilogueBackend;
 import edu.wpi.first.epilogue.logging.errors.ErrorHandler;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -35,6 +38,8 @@ import frc.robot.subsystems.Flywheel;
 import frc.robot.subsystems.Indexer;
 import frc.robot.subsystems.Lintake;
 import frc.robot.subsystems.Turret;
+import frc.robot.subsystems.Flywheel.FlywheelSetpoint;
+import frc.robot.subsystems.Hood;
 import frc.robot.util.CommandGamesirController;
 import frc.robot.util.FuelSim;
 import frc.robot.vision.LoggableRobotPose;
@@ -66,6 +71,7 @@ public class Robot extends TimedRobot {
     private Command m_autonomousCommand;
     public Lintake lintake = new Lintake();
     public Turret turret = new Turret();
+    public Hood hood = new Hood();
     public Indexer indexer = new Indexer();
     public Flywheel flywheel = new Flywheel();
     /* log and replay timestamp and joystick data */
@@ -112,12 +118,12 @@ public class Robot extends TimedRobot {
 
             FuelSim.getInstance().registerIntake(
                     Units.inchesToMeters(17.475),
-                    Units.inchesToMeters(27.117), 
+                    Units.inchesToMeters(27.117),
                     Units.inchesToMeters(-12.725),
                     Units.inchesToMeters(-2.725), // robot-centric coordinates for bounding box in meters
                     lintake::getIntakeEnabled // (optional) BooleanSupplier for whether the intake should be active at a
                                               // given moment
-            ); 
+            );
 
         }
         FuelSim.getInstance().start();
@@ -161,7 +167,21 @@ public class Robot extends TimedRobot {
         joystick.povDown().onTrue(turret.setAngleCommand(0)); // Right side
         joystick.povUp().onTrue(turret.setAngleCommand(9)); // Back
         joystick.povLeft().onTrue(turret.setAngleCommand(10.0)); // Left side
-
+        joystick.rightBumper().whileTrue(
+                turret.followAngleCommand(() -> {
+                    var robotPose = drivetrain.getState().Pose;
+                    var targetPose = // point at hub from fieldconstants
+                            new Translation2d(FieldConstants.Hub.topCenterPoint.getX(), FieldConstants.Hub.topCenterPoint.getY());
+                        var angleToTarget = targetPose
+                                .minus(robotPose.getTranslation())
+                                .getAngle()
+                                .minus(robotPose.getRotation());
+                    return angleToTarget.getDegrees();
+                }).alongWith(
+                    flywheel.setTarget(()-> {
+                        return FlywheelSetpoint.Far;
+                    })
+                ).alongWith(hood.setAngleCommand(50)));
 
     }
 
@@ -191,7 +211,8 @@ public class Robot extends TimedRobot {
         CommandScheduler.getInstance().run();
         CommandsLogging.logRunningCommands();
         CommandsLogging.logRequiredSubsystems();
-        logger.updateMechanismPoses(lintake.getMechanismPose(), turret.getMechanismPose());
+        logger.updateMechanismPoses(lintake.getMechanismPose(), turret.getMechanismPose(),
+                hood.getMechanismPose(turret.getMechanismPose().getRotation()));
     }
 
     @Override

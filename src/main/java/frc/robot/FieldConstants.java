@@ -9,6 +9,7 @@ package frc.robot;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.wpi.first.apriltag.AprilTagFieldLayout;
+import edu.wpi.first.apriltag.AprilTagFields;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.geometry.Translation3d;
@@ -24,7 +25,7 @@ import java.nio.file.Path;
  * perspective of the blue alliance station
  */
 public class FieldConstants {
-  public static final FieldType fieldType = FieldType.WELDED;
+  public static final FieldType fieldType = FieldType.ANDYMARK;
 
   // AprilTag related constants
   public static final int aprilTagCount = AprilTagLayoutType.OFFICIAL.getLayout().getTags().size();
@@ -334,7 +335,8 @@ public class FieldConstants {
 
     public AprilTagFieldLayout getLayout() {
       if (layout == null) {
-        synchronized (this) {
+        layout = AprilTagFieldLayout.loadField(AprilTagFields.k2026RebuiltAndymark);
+       /*  synchronized (this) {
           if (layout == null) {
             try {
               Path p =
@@ -358,7 +360,7 @@ public class FieldConstants {
             }
           }
         }
-      }
+    */ }
       return layout;
     }
 

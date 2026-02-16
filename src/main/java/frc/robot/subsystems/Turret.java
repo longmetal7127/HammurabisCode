@@ -7,6 +7,7 @@ import static edu.wpi.first.units.Units.Rotations;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
 
 import java.util.Optional;
+import java.util.function.Supplier;
 
 import com.revrobotics.RelativeEncoder;
 import com.revrobotics.sim.SparkRelativeEncoderSim;
@@ -282,7 +283,6 @@ public class Turret extends SubsystemBase {
    * Set pivot angle with acceleration.
    * 
    * @param angleDegrees The target angle in degrees
-   * @param acceleration The acceleration in rad/s²
    */
   public void setAngle(double angleDegrees) {
     // Convert degrees to rotations
@@ -347,6 +347,10 @@ public class Turret extends SubsystemBase {
   public Command setAngleCommand(double angleDegrees) {
     return runOnce(() -> setAngle(angleDegrees));
   }
+
+  public Command followAngleCommand(Supplier<Double> angleDegreesSupplier) {
+    return run(() -> setAngle(angleDegreesSupplier.get()));
+  } 
 
 
   /**

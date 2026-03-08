@@ -5,32 +5,33 @@ import static edu.wpi.first.units.Units.Radians;
 import static edu.wpi.first.units.Units.RadiansPerSecond;
 import static edu.wpi.first.units.Units.Rotations;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
+import static edu.wpi.first.units.Units.Volts;
 
 import java.util.Optional;
 import java.util.function.Supplier;
 
-import com.revrobotics.RelativeEncoder;
-import com.revrobotics.sim.SparkRelativeEncoderSim;
-import com.revrobotics.spark.ClosedLoopSlot;
-import com.revrobotics.spark.FeedbackSensor;
-import com.revrobotics.spark.SparkBase.ControlType;
-import com.revrobotics.spark.SparkBase.PersistMode;
-import com.revrobotics.spark.SparkBase.ResetMode;
-import com.revrobotics.spark.SparkClosedLoopController;
-import com.revrobotics.spark.SparkFlex;
-import com.revrobotics.spark.SparkLowLevel.MotorType;
-import com.revrobotics.spark.SparkSim;
-import com.revrobotics.spark.config.MAXMotionConfig.MAXMotionPositionMode;
-import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
-import com.revrobotics.spark.config.SparkFlexConfig;
+import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.CANBus;
+import com.ctre.phoenix6.SignalLogger;
+import com.ctre.phoenix6.StatusSignal;
+import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
+import com.ctre.phoenix6.configs.Slot0Configs;
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.controls.Follower;
+import com.ctre.phoenix6.controls.PositionVoltage;
+import com.ctre.phoenix6.controls.VelocityVoltage;
+import com.ctre.phoenix6.controls.VoltageOut;
+import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.signals.FeedbackSensorSourceValue;
+import com.ctre.phoenix6.signals.MotorAlignmentValue;
+import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.epilogue.Logged;
-import edu.wpi.first.math.controller.ArmFeedforward;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.util.Units;
-import edu.wpi.first.units.measure.Angle;
+import edu.wpi.first.units.measure.*;
 import edu.wpi.first.wpilibj.DutyCycleEncoder;
 import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.simulation.BatterySim;
@@ -39,41 +40,50 @@ import edu.wpi.first.wpilibj.simulation.RoboRioSim;
 import edu.wpi.first.wpilibj.simulation.SingleJointedArmSim;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.Robot;
 import frc.robot.util.CRTSolver;
 import frc.robot.util.CRTSolverConfig;
 
 /**
- * Pivot subsystem using SparkFlex with NEO motor
+ * Pivot subsystem using TalonFX with Krakenx60 motor
  */
 @Logged(name = "Turret")
 public class Turret extends SubsystemBase {
 
   // Constants
-  private final DCMotor dcMotor = DCMotor.getNEO(1);
-  private final int canID = 20;
+  private final DCMotor dcMotor = DCMotor.getKrakenX60(1);
+  private final int canID = 11;
 
   private final int platterGearTeeth = 90;
   private final int encoder1Teeth = 19;
   private final int encoder2Teeth = 9;
   private final double gearRatio = 34.5;
 
-  private final double kP = 1.84;
+  private final double kP = 90;
   private final double kI = 0;
-  private final double kD = 0;
-  private final double kS = 0;
-  private final double kV = 3.64;
-  private final double kA = 0.09;
+  private final double kD = 1.2881;
+  private final double kS = 0.24727;
+  private final double kV = 4.1561;
+  private final double kA = 0.0604;
   private final double maxVelocity = .5;
   private final double maxAcceleration = 1;
   private final boolean brakeMode = true;
-
+  private final boolean enableStatorLimit = true;
+  private final double statorCurrentLimit = 40;
+  private final boolean enableSupplyLimit = false;
+  private final double supplyCurrentLimit = 40;
 
   // Motor controller
-  private final SparkFlex motor;
-  private final RelativeEncoder encoder;
-  private final SparkSim motorSim;
-  private final SparkClosedLoopController sparkPidController;
+  private final TalonFX motor = new TalonFX(canID, new CANBus("*"));
+;
+  private final PositionVoltage positionRequest;
+  private final VelocityVoltage velocityRequest;
+  private final StatusSignal<Angle> positionSignal;
+  private final StatusSignal<AngularVelocity> velocitySignal;
+  private final StatusSignal<Voltage> voltageSignal;
+  private final StatusSignal<Current> statorCurrentSignal;
+  private final StatusSignal<Temperature> temperatureSignal;
 
   private final double minAngleDegrees = -180.0;
   private final double maxAngleDegrees = 180.0;
@@ -92,49 +102,69 @@ public class Turret extends SubsystemBase {
   private final DutyCycleEncoderSim absoluteEncoder2Sim;
 
   public double setpoint = 0.0;
+    private final VoltageOut m_voltReq = new VoltageOut(0.0);
+
+    private final SysIdRoutine m_sysIdRoutine = new SysIdRoutine(
+            new SysIdRoutine.Config(
+                    null, // Use default ramp rate (1 V/s)
+                    Volts.of(4), // Reduce dynamic step voltage to 4 to prevent brownout
+                    null, // Use default timeout (10 s)
+                          // Log state with Phoenix SignalLogger class
+                    (state) -> SignalLogger.writeString("sysid-state-turret", state.toString())),
+            new SysIdRoutine.Mechanism(
+                    (volts) -> {
+                        motor.setControl(m_voltReq.withOutput(volts.in(Volts)));
+                    },
+                    null,
+                    this));
 
   /**
    * Creates a new Pivot Subsystem.
    */
   public Turret() {
     // Initialize motor controller
-    SparkFlexConfig motorConfig = new SparkFlexConfig();
-    motor = new SparkFlex(canID, MotorType.kBrushless);
-    motorConfig.idleMode(brakeMode ? IdleMode.kBrake : IdleMode.kCoast);
 
-    // Configure encoder
-    encoder = motor.getEncoder();
-    encoder.setPosition(0);
+    // Create control requests
+    positionRequest = new PositionVoltage(0).withSlot(0);
+    velocityRequest = new VelocityVoltage(0).withSlot(0);
+
+    // Get status signals
+    positionSignal = motor.getPosition();
+    velocitySignal = motor.getVelocity();
+    voltageSignal = motor.getMotorVoltage();
+    statorCurrentSignal = motor.getStatorCurrent();
+    temperatureSignal = motor.getDeviceTemp();
+
+    TalonFXConfiguration config = new TalonFXConfiguration();
+
+    // Configure PID for slot 0
+    Slot0Configs slot0 = config.Slot0;
+    slot0.kP = kP;
+    slot0.kI = kI;
+    slot0.kD = kD;
+    slot0.kS = kS;
+    slot0.kV = kV;
+    slot0.kA = kA;
 
     // Set current limits
-    motorConfig.smartCurrentLimit(40);
+    CurrentLimitsConfigs currentLimits = config.CurrentLimits;
+    currentLimits.StatorCurrentLimit = statorCurrentLimit;
+    currentLimits.StatorCurrentLimitEnable = enableStatorLimit;
+    currentLimits.SupplyCurrentLimit = supplyCurrentLimit;
+    currentLimits.SupplyCurrentLimitEnable = enableSupplyLimit;
 
-    // Configure Feedback and Feedforward
-    sparkPidController = motor.getClosedLoopController();
-    motorConfig.closedLoop
-        .feedbackSensor(FeedbackSensor.kPrimaryEncoder)
-        .pid(kP, kI, kD, ClosedLoopSlot.kSlot0);
-    motorConfig.closedLoop.feedForward.kS(kS).kV(kV).kA(kA);
-    motorConfig.closedLoop.feedForward.kG(0);
-    motorConfig.closedLoop.maxMotion
-        .cruiseVelocity(maxVelocity)
-        .positionMode(MAXMotionPositionMode.kMAXMotionTrapezoidal)
-        .allowedProfileError(0.02)
-        .maxAcceleration(maxAcceleration);
+    // Set brake mode
+    config.MotorOutput.NeutralMode = brakeMode
+        ? NeutralModeValue.Brake
+        : NeutralModeValue.Coast;
 
-    // Configure Encoder Gear Ratio
-    motorConfig.encoder
-        .positionConversionFactor(1 / gearRatio)
-        .velocityConversionFactor((1 / gearRatio) / 60); // Covnert RPM to RPS
+    config.Feedback.SensorToMechanismRatio = gearRatio;
+    config.Feedback.FeedbackSensorSource = FeedbackSensorSourceValue.RotorSensor;
 
-    // Save configuration
-    motor.configure(
-        motorConfig,
-        ResetMode.kResetSafeParameters,
-        PersistMode.kPersistParameters);
-    motorSim = new SparkSim(motor, dcMotor);
+    motor.getConfigurator().apply(config);
 
-    // Initialize simulation
+    motor.setPosition(0);
+
     pivotSim = new SingleJointedArmSim(
         dcMotor, // Motor type
         gearRatio,
@@ -176,11 +206,19 @@ public class Turret extends SubsystemBase {
 
   @Override
   public void periodic() {
-    if (!positionInitialized && !Robot.isSimulation()) {
+    BaseStatusSignal.refreshAll(
+        positionSignal,
+        velocitySignal,
+        voltageSignal,
+        statorCurrentSignal,
+        temperatureSignal);
+
+    if (!positionInitialized && false) {
       Optional<Angle> solvedAngle = crtSolver.getAngleOptional();
       if (solvedAngle.isPresent()) {
         double angleDegrees = solvedAngle.get().in(Degrees);
-        encoder.setPosition(angleDegrees);
+        // Set motor position in rotations (mechanism rotations, since SensorToMechanismRatio is set)
+        motor.setPosition(Units.degreesToRotations(angleDegrees));
         positionInitialized = true;
         System.out.println("Turret position initialized to: " + angleDegrees + " degrees");
         System.out.println("CRT Status: " + crtSolver.getLastStatus());
@@ -199,15 +237,11 @@ public class Turret extends SubsystemBase {
    */
   @Override
   public void simulationPeriodic() {
+    // Set supply voltage for the TalonFX sim state
+    motor.getSimState().setSupplyVoltage(RobotController.getBatteryVoltage());
+
     // Set input voltage from motor controller to simulation
-    // Note: This may need to be talonfx.getSimState().getMotorVoltage() as the
-    // input
-    // pivotSim.setInput(dcMotor.getVoltage(dcMotor.getTorque(pivotSim.getCurrentDrawAmps()),
-    // pivotSim.getVelocityRadPerSec()));
-    // pivotSim.setInput(getVoltage());
-    // Set input voltage from motor controller to simulation
-    // Use getVoltage() for other controllers
-    pivotSim.setInput(getVoltage());
+    pivotSim.setInput(motor.getSimState().getMotorVoltage());
 
     // Update simulation by 20ms
     pivotSim.update(0.020);
@@ -215,11 +249,14 @@ public class Turret extends SubsystemBase {
         BatterySim.calculateDefaultBatteryLoadedVoltage(
             pivotSim.getCurrentDrawAmps()));
 
+    // Apply rotor position/velocity (before gear ratio) to sim state
     double motorPosition = Radians.of(pivotSim.getAngleRads() * gearRatio).in(
         Rotations);
     double motorVelocity = RadiansPerSecond.of(
-        pivotSim.getVelocityRadPerSec()).in(RotationsPerSecond);
-    motorSim.iterate(motorVelocity, RoboRioSim.getVInVoltage(), 0.02);
+        pivotSim.getVelocityRadPerSec() * gearRatio).in(RotationsPerSecond);
+
+    motor.getSimState().setRawRotorPosition(motorPosition);
+    motor.getSimState().setRotorVelocity(motorVelocity);
   }
 
   /**
@@ -229,8 +266,8 @@ public class Turret extends SubsystemBase {
    */
   @Logged(name = "Position/Rotations")
   public double getPosition() {
-    // Rotations
-    return encoder.getPosition();
+    // Rotations (mechanism rotations, since SensorToMechanismRatio is set)
+    return positionSignal.getValueAsDouble();
   }
 
   public double getPositionRadians() {
@@ -248,7 +285,7 @@ public class Turret extends SubsystemBase {
    */
   @Logged(name = "Velocity")
   public double getVelocity() {
-    return encoder.getVelocity() / gearRatio / 60.0; // Convert from RPM to RPS
+    return velocitySignal.getValueAsDouble();
   }
 
   /**
@@ -258,7 +295,7 @@ public class Turret extends SubsystemBase {
    */
   @Logged(name = "Voltage")
   public double getVoltage() {
-    return motor.getAppliedOutput() * motor.getBusVoltage();
+    return voltageSignal.getValueAsDouble();
   }
 
   /**
@@ -267,7 +304,7 @@ public class Turret extends SubsystemBase {
    * @return Motor current in amps
    */
   public double getCurrent() {
-    return motor.getOutputCurrent();
+    return statorCurrentSignal.getValueAsDouble();
   }
 
   /**
@@ -276,22 +313,19 @@ public class Turret extends SubsystemBase {
    * @return Motor temperature in Celsius
    */
   public double getTemperature() {
-    return motor.getMotorTemperature();
+    return temperatureSignal.getValueAsDouble();
   }
 
   /**
-   * Set pivot angle with acceleration.
+   * Set pivot angle.
    * 
    * @param angleDegrees The target angle in degrees
    */
   public void setAngle(double angleDegrees) {
     // Convert degrees to rotations
-    double angleRotations = Units.degreesToRotations(angleDegrees);
+    double positionRotations = Units.degreesToRotations(angleDegrees);
     setpoint = angleDegrees;
-    sparkPidController.setSetpoint(
-        angleRotations,
-        ControlType.kMAXMotionPositionControl,
-        ClosedLoopSlot.kSlot0);
+    motor.setControl(positionRequest.withPosition(positionRotations));
   }
 
   /**
@@ -314,10 +348,7 @@ public class Turret extends SubsystemBase {
     double velocityRadPerSec = Units.degreesToRadians(velocityDegPerSec);
     double velocityRotations = velocityRadPerSec / (2.0 * Math.PI);
 
-    sparkPidController.setSetpoint(
-        velocityRotations,
-        ControlType.kVelocity,
-        ClosedLoopSlot.kSlot0);
+    motor.setControl(velocityRequest.withVelocity(velocityRotations));
   }
 
   /**
@@ -383,5 +414,13 @@ public class Turret extends SubsystemBase {
         new Translation3d(0.1651, 0.1016, 0.3349752),
         new Rotation3d(0, 0, Math.toRadians(getAngleDegrees())));
   }
+
+      public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
+        return m_sysIdRoutine.quasistatic(direction);
+    }
+
+    public Command sysIdDynamic(SysIdRoutine.Direction direction) {
+        return m_sysIdRoutine.dynamic(direction);
+    }
 
 }

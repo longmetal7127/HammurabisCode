@@ -4,14 +4,15 @@ import com.revrobotics.RelativeEncoder;
 import com.revrobotics.spark.ClosedLoopSlot;
 import com.revrobotics.spark.FeedbackSensor;
 import com.revrobotics.spark.SparkBase.ControlType;
+import com.ctre.phoenix6.SignalLogger;
 import com.revrobotics.PersistMode;
 import com.revrobotics.ResetMode;
 import com.revrobotics.spark.SparkClosedLoopController;
-import com.revrobotics.spark.SparkFlex;
+import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.SparkSim;
 import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
-import com.revrobotics.spark.config.SparkFlexConfig;
+import com.revrobotics.spark.config.SparkMaxConfig;
 import edu.wpi.first.epilogue.Logged;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.system.plant.LinearSystemId;
@@ -19,74 +20,93 @@ import edu.wpi.first.wpilibj.simulation.FlywheelSim;
 import edu.wpi.first.wpilibj.simulation.RoboRioSim;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
+
+import static edu.wpi.first.units.Units.Volts;
 
 import java.util.function.Supplier;
 
 /**
- * Indexer subsystem using SparkFlex with NEO Vortex motor.
- * Velocity-controlled flywheel for indexing game pieces.
+ * Spindexer subsystem using SparkMax with NEO motor.
+ * Velocity-controlled flywheel for spinning/agitating game pieces.
  */
-@Logged(name = "Indexer")
-public class Indexer extends SubsystemBase {
+@Logged(name = "Spindexer")
+public class Spindexer extends SubsystemBase {
 
-  public enum IndexerSetpoint {
-    Index(3000),
+  public enum SpindexerSetpoint {
+    Spin(3000),
     Stop(0);
 
     public final double velocityRPM;
 
-    private IndexerSetpoint(double velocityRPM) {
+    private SpindexerSetpoint(double velocityRPM) {
       this.velocityRPM = velocityRPM;
     }
   }
 
   // Constants
-  private final DCMotor dcMotor = DCMotor.getNeoVortex(1);
-  private final int canID = 9;
+  private final DCMotor dcMotor = DCMotor.getNEO(1);
+  private final int canID = 8;
   private final double gearRatio = 3.0;
 
-  private final double kP = 0.0001;
+  private final double kP = 0.00091287;
   private final double kI = 0.0;
   private final double kD = 0.0;
-  private final double kV = 0.00009;
+  private final double kV = 0.0060921;
+  private final double kA = 0.00068446;
+  private final double kS = 0.083021;
 
-  private final double maxVelocityRPM = 6784; // NEO Vortex free speed
-  private final double maxAccelerationRPMPerSec = 12000;
+  private final double maxVelocityRPM = 5676; // NEO free speed
+  private final double maxAccelerationRPMPerSec = 10000;
 
-  private final int statorCurrentLimit = 60; // Vortex supports higher current
+  private final int statorCurrentLimit = 40;
 
-  private final SparkFlex motor;
-  private final SparkFlexConfig config;
+  private final SparkMax motor = new SparkMax(canID, MotorType.kBrushless);;
+  private final SparkMaxConfig config;
   private final SparkClosedLoopController pidController;
   private final RelativeEncoder encoder;
 
   private final SparkSim motorSim;
-  private final FlywheelSim indexerSim;
+  private final FlywheelSim spindexerSim;
 
   private double targetVelocityRPM = 0.0;
+  private final SysIdRoutine m_sysIdRoutine = new SysIdRoutine(
+      new SysIdRoutine.Config(
+          null, // Use default ramp rate (1 V/s)
+          Volts.of(4), // Reduce dynamic step voltage to 4 to prevent brownout
+          null // Use default timeout (10 s)
+               // Log state with Phoenix SignalLogger class
+          
+      ),
+      new SysIdRoutine.Mechanism(
+          (volts) -> {
+            motor.setVoltage((volts.in(Volts)));
+          },
+          null,
+          this));
 
   @SuppressWarnings("removal")
-  public Indexer() {
-    motor = new SparkFlex(canID, MotorType.kBrushless);
+  public Spindexer() {
 
     pidController = motor.getClosedLoopController();
     encoder = motor.getEncoder();
 
-    config = new SparkFlexConfig();
+    config = new SparkMaxConfig();
     config
         .idleMode(IdleMode.kBrake)
         .smartCurrentLimit(statorCurrentLimit)
-        .inverted(true);
+        .inverted(false);
 
     config.closedLoop
         .feedbackSensor(FeedbackSensor.kPrimaryEncoder)
         .pid(kP, kI, kD, ClosedLoopSlot.kSlot0);
 
     config.closedLoop.feedForward
-        .kV(kV);
+        .kV(kV)
+        .kS(kS)
+        .kA(kA);
 
     config.closedLoop.maxMotion
-        .maxVelocity(maxVelocityRPM)
         .maxAcceleration(maxAccelerationRPMPerSec);
 
     config.encoder
@@ -96,22 +116,27 @@ public class Indexer extends SubsystemBase {
     motor.configure(config, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
 
     motorSim = new SparkSim(motor, dcMotor);
-    indexerSim = new FlywheelSim(
+    spindexerSim = new FlywheelSim(
         LinearSystemId.createFlywheelSystem(dcMotor, 0.001, gearRatio),
-        dcMotor
-    );
+        dcMotor);
   }
 
   /**
-   * Get the current velocity of the indexer in RPM
+   * Get the current velocity of the spindexer in RPM
+   * 
    * @return Current velocity in RPM
    */
   public double getVelocityRPM() {
     return encoder.getVelocity();
   }
 
+  public double getVoltage() {
+    return motor.getAppliedOutput() * motor.getBusVoltage();
+  }
+
   /**
-   * Get the current position of the indexer in rotations
+   * Get the current position of the spindexer in rotations
+   * 
    * @return Current position in rotations
    */
   public double getPositionRotations() {
@@ -120,6 +145,7 @@ public class Indexer extends SubsystemBase {
 
   /**
    * Get the motor output current
+   * 
    * @return Current in amps
    */
   public double getOutputCurrent() {
@@ -128,6 +154,7 @@ public class Indexer extends SubsystemBase {
 
   /**
    * Get the target velocity in RPM
+   * 
    * @return Target velocity in RPM
    */
   public double getTargetVelocityRPM() {
@@ -135,7 +162,8 @@ public class Indexer extends SubsystemBase {
   }
 
   /**
-   * Check if the indexer is near the target velocity
+   * Check if the spindexer is near the target velocity
+   * 
    * @param threshold Tolerance in RPM
    * @return True if within threshold of target
    */
@@ -144,72 +172,76 @@ public class Indexer extends SubsystemBase {
   }
 
   /**
-   * Drives the indexer to the provided velocity setpoint using MAXMotion.
+   * Drives the spindexer to the provided velocity setpoint using MAXMotion.
    *
    * @param setpoint Supplier returning the setpoint to apply
    * @return Command to run
    */
-  public Command setTarget(Supplier<IndexerSetpoint> setpoint) {
-    return startEnd(() -> {
-      IndexerSetpoint target = setpoint.get();
+  public Command setTarget(Supplier<SpindexerSetpoint> setpoint) {
+    return run(() -> {
+      SpindexerSetpoint target = setpoint.get();
       targetVelocityRPM = target.velocityRPM;
       pidController.setSetpoint(
-          8,
-          ControlType.kVoltage,
-          ClosedLoopSlot.kSlot0
-      );
-    }, () -> {
-      targetVelocityRPM = 0.0;
-      motor.stopMotor();
-    }).withName("Indexer.setTargetTemporary");
+          targetVelocityRPM,
+          ControlType.kMAXMotionVelocityControl,
+          ClosedLoopSlot.kSlot0);
+    }).withName("Spindexer.setTarget");
   }
+
   /**
-   * Drives the indexer to the provided velocity setpoint using MAXMotion until the command ends.
+   * Drives the spindexer to the provided velocity setpoint using MAXMotion.
    *
    * @param setpoint Supplier returning the setpoint to apply
    * @return Command to run
    */
-  public Command setTargetTemporary(Supplier<IndexerSetpoint> setpoint) {
+  public Command setTargetTemporary(Supplier<SpindexerSetpoint> setpoint) {
     return startEnd(() -> {
-      IndexerSetpoint target = setpoint.get();
+      SpindexerSetpoint target = setpoint.get();
       targetVelocityRPM = target.velocityRPM;
       pidController.setSetpoint(
           8,
           ControlType.kVoltage,
-          ClosedLoopSlot.kSlot0
-      );
+          ClosedLoopSlot.kSlot0);
     }, () -> {
       targetVelocityRPM = 0.0;
       motor.stopMotor();
-    }).withName("Indexer.setTargetTemporary");
+    }).withName("Spindexer.setTargetTemporary");
   }
+
   /**
-   * Drives the indexer to a specific velocity setpoint.
+   * Drives the spindexer to a specific velocity setpoint.
    *
    * @param setpoint The setpoint to apply
    * @return Command to run
    */
-  public Command setTarget(IndexerSetpoint setpoint) {
+  public Command setTarget(SpindexerSetpoint setpoint) {
     return setTarget(() -> setpoint)
-        .withName("Indexer.setTarget(" + setpoint.name() + ")");
-  }
-  public Command setTargetTemporary(IndexerSetpoint setpoint) {
-    return setTargetTemporary(() -> setpoint)
-        .withName("Indexer.setTargetTemporary(" + setpoint.name() + ")");
+        .withName("Spindexer.setTarget(" + setpoint.name() + ")");
   }
 
   /**
-   * Runs the indexer at the index speed.
+   * Drives the spindexer to a specific velocity setpoint.
+   *
+   * @param setpoint The setpoint to apply
+   * @return Command to run
+   */
+  public Command setTargetTemporary(SpindexerSetpoint setpoint) {
+    return setTargetTemporary(() -> setpoint)
+        .withName("Spindexer.setTargetTemporary(" + setpoint.name() + ")");
+  }
+
+  /**
+   * Runs the spindexer at the spin speed.
    *
    * @return Command to run
    */
-  public Command index() {
-    return setTarget(IndexerSetpoint.Index)
-        .withName("Indexer.index");
+  public Command spin() {
+    return setTarget(SpindexerSetpoint.Spin)
+        .withName("Spindexer.spin");
   }
 
   /**
-   * Stops the indexer.
+   * Stops the spindexer.
    *
    * @return Command to run
    */
@@ -217,7 +249,7 @@ public class Indexer extends SubsystemBase {
     return runOnce(() -> {
       targetVelocityRPM = 0.0;
       motor.stopMotor();
-    }).withName("Indexer.stop");
+    }).withName("Spindexer.stop");
   }
 
   @Override
@@ -233,7 +265,15 @@ public class Indexer extends SubsystemBase {
     motorSim.iterate(velocityRPS * 60, RoboRioSim.getVInVoltage(), 0.02);
 
     // Update the flywheel simulation with motor voltage
-    indexerSim.setInputVoltage(motorSim.getAppliedOutput() * RoboRioSim.getVInVoltage());
-    indexerSim.update(0.02);
+    spindexerSim.setInputVoltage(motorSim.getAppliedOutput() * RoboRioSim.getVInVoltage());
+    spindexerSim.update(0.02);
+  }
+
+  public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
+    return m_sysIdRoutine.quasistatic(direction);
+  }
+
+  public Command sysIdDynamic(SysIdRoutine.Direction direction) {
+    return m_sysIdRoutine.dynamic(direction);
   }
 }

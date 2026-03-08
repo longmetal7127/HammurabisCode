@@ -8,12 +8,16 @@ import static edu.wpi.first.units.Units.MetersPerSecond;
 import static edu.wpi.first.units.Units.RadiansPerSecond;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
 
-import java.lang.reflect.Field;
+import org.littletonrobotics.urcl.URCL;
 
 import com.ctre.phoenix6.HootAutoReplay;
 import com.ctre.phoenix6.HootEpilogueBackend;
 import com.ctre.phoenix6.Utils;
 import com.ctre.phoenix6.swerve.SwerveModule.DriveRequestType;
+
+import dev.doglog.DogLog;
+import dev.doglog.DogLogOptions;
+
 import com.ctre.phoenix6.swerve.SwerveRequest;
 
 import edu.wpi.first.epilogue.Epilogue;
@@ -23,20 +27,26 @@ import edu.wpi.first.epilogue.logging.NTEpilogueBackend;
 import edu.wpi.first.epilogue.logging.errors.ErrorHandler;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.wpilibj.DataLogManager;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.Flywheel;
 import frc.robot.subsystems.Indexer;
+import frc.robot.subsystems.Indexer.IndexerSetpoint;
 import frc.robot.subsystems.Lintake;
+import frc.robot.subsystems.Spindexer;
+import frc.robot.subsystems.Spindexer.SpindexerSetpoint;
 import frc.robot.subsystems.Turret;
 import frc.robot.subsystems.Flywheel.FlywheelSetpoint;
 import frc.robot.subsystems.Hood;
@@ -48,12 +58,20 @@ import frc.robot.vision.PhotonVisionSystem;
 @Logged
 public class Robot extends TimedRobot {
 
+    private enum IntakeMode {
+        /** Mode A: on release, move lintake to 0.1m and stop rollers. */
+        A,
+        /** Mode B: on release, just stop rollers. */
+        B
+    }
+
+    private IntakeMode intakeMode = IntakeMode.A;
+
     private double MaxSpeed = 1.0 * TunerConstants.kSpeedAt12Volts.in(MetersPerSecond); // kSpeedAt12Volts desired top
                                                                                         // speed
     private double MaxAngularRate = RotationsPerSecond.of(0.75).in(RadiansPerSecond); // 3/4 of a rotation per second
                                                                                       // max angular velocity
 
-    /* Setting up bindings for necessary control of the swerve drive platform */
     private final SwerveRequest.FieldCentric drive = new SwerveRequest.FieldCentric()
             .withDeadband(MaxSpeed * 0.1).withRotationalDeadband(MaxAngularRate * 0.1) // Add a 10% deadband
             .withDriveRequestType(DriveRequestType.OpenLoopVoltage); // Use open-loop control for drive motors
@@ -73,6 +91,7 @@ public class Robot extends TimedRobot {
     public Turret turret = new Turret();
     public Hood hood = new Hood();
     public Indexer indexer = new Indexer();
+    public Spindexer spindexer = new Spindexer();
     public Flywheel flywheel = new Flywheel();
     /* log and replay timestamp and joystick data */
     private final HootAutoReplay m_timeAndJoystickReplay = new HootAutoReplay()
@@ -80,6 +99,7 @@ public class Robot extends TimedRobot {
             .withJoystickReplay();
 
     public Robot() {
+        DogLog.setOptions(new DogLogOptions().withCaptureNt(true));
         Epilogue.configure(config -> {
             // Log to both the Phoenix 6 SignalLogger
             // and NT4 backends
@@ -122,11 +142,13 @@ public class Robot extends TimedRobot {
                     Units.inchesToMeters(-12.725),
                     Units.inchesToMeters(-2.725), // robot-centric coordinates for bounding box in meters
                     lintake::getIntakeEnabled // (optional) BooleanSupplier for whether the intake should be active at a
-                                              // given moment
+            // given moment
             );
 
         }
         FuelSim.getInstance().start();
+        URCL.start(DataLogManager.getLog());
+
     }
 
     private void configureBindings() {
@@ -148,41 +170,28 @@ public class Robot extends TimedRobot {
         RobotModeTriggers.disabled().whileTrue(
                 drivetrain.applyRequest(() -> idle).ignoringDisable(true));
 
-        // Run SysId routines when holding back/start and X/Y.
-        // Note that each routine should be run exactly once in a single log.
-        joystick.back().and(joystick.y()).whileTrue(drivetrain.sysIdDynamic(Direction.kForward));
-        joystick.back().and(joystick.x()).whileTrue(drivetrain.sysIdDynamic(Direction.kReverse));
-        joystick.start().and(joystick.y()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kForward));
-        joystick.start().and(joystick.x()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kReverse));
+        joystick.leftTrigger().whileTrue(
+                Commands.print("Shoot stub: left trigger held"));
 
-        joystick.leftBumper().onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
+        joystick.rightTrigger().whileTrue(
+                Commands.parallel(
+                        lintake.setHeightCommand(lintake.getMaxHeightMeters()),
+                        lintake.setVelocityCommand(1.0)))
+                .onFalse(
+                        Commands.either(
+                                Commands.parallel(
+                                        lintake.setHeightCommand(0.1),
+                                        lintake.stopCommand()),
+                                lintake.stopCommand(),
+                                () -> intakeMode == IntakeMode.A));
+
+        joystick.leftBumper().onTrue(
+                Commands.runOnce(() -> intakeMode = IntakeMode.A));
+
+        joystick.rightBumper().onTrue(
+                Commands.runOnce(() -> intakeMode = IntakeMode.B));
 
         drivetrain.registerTelemetry(logger::telemeterize);
-
-        joystick.a().onTrue(lintake.setHeightCommand(0.0)); // Retract to minimum
-        joystick.b().onTrue(lintake.setHeightCommand(0.5)); // Mid position
-        joystick.x().onTrue(lintake.setHeightCommand(lintake.getMaxHeightMeters())); // Extend to maximum
-
-        joystick.povRight().onTrue(turret.setAngleCommand(50)); // Front (0 degrees)
-        joystick.povDown().onTrue(turret.setAngleCommand(0)); // Right side
-        joystick.povUp().onTrue(turret.setAngleCommand(9)); // Back
-        joystick.povLeft().onTrue(turret.setAngleCommand(10.0)); // Left side
-        joystick.rightBumper().whileTrue(
-                turret.followAngleCommand(() -> {
-                    var robotPose = drivetrain.getState().Pose;
-                    var targetPose = // point at hub from fieldconstants
-                            new Translation2d(FieldConstants.Hub.topCenterPoint.getX(), FieldConstants.Hub.topCenterPoint.getY());
-                        var angleToTarget = targetPose
-                                .minus(robotPose.getTranslation())
-                                .getAngle()
-                                .minus(robotPose.getRotation());
-                    return angleToTarget.getDegrees();
-                }).alongWith(
-                    flywheel.setTarget(()-> {
-                        return FlywheelSetpoint.Far;
-                    })
-                ).alongWith(hood.setAngleCommand(50)));
-
     }
 
     public void consumePhotonVisionMeasurement(LoggableRobotPose pose) {
@@ -211,8 +220,11 @@ public class Robot extends TimedRobot {
         CommandScheduler.getInstance().run();
         CommandsLogging.logRunningCommands();
         CommandsLogging.logRequiredSubsystems();
-        logger.updateMechanismPoses(lintake.getMechanismPose(), turret.getMechanismPose(),
+
+        logger.updateMechanismPoses(lintake.getMechanismPose(),
+                turret.getMechanismPose(),
                 hood.getMechanismPose(turret.getMechanismPose().getRotation()));
+
     }
 
     @Override

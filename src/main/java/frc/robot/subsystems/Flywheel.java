@@ -7,15 +7,20 @@ import java.util.function.Supplier;
 
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.CANBus;
+import com.ctre.phoenix6.SignalLogger;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.Utils;
 import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.MotorOutputConfigs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.CoastOut;
+import com.ctre.phoenix6.controls.Follower;
+import com.ctre.phoenix6.controls.VelocityTorqueCurrentFOC;
 import com.ctre.phoenix6.controls.VelocityVoltage;
+import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
+import com.ctre.phoenix6.signals.MotorAlignmentValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import com.ctre.phoenix6.sim.ChassisReference;
 import com.ctre.phoenix6.sim.TalonFXSimState;
@@ -36,15 +41,16 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
 @Logged
 public class Flywheel extends SubsystemBase {
     /** Velocity setpoints for the flywheel. */
     public enum FlywheelSetpoint {
-        Intake(RotationsPerSecond.of(80)),
-        Outtake(RotationsPerSecond.of(-80)),
-        Near(RotationsPerSecond.of(70)),
-        Far(RotationsPerSecond.of(80));
+        Intake(RotationsPerSecond.of(60)),
+        Outtake(RotationsPerSecond.of(-60)),
+        Near(RotationsPerSecond.of(50)),
+        Far(RotationsPerSecond.of(60));
 
         /** The velocity target of the setpoint. */
         public final AngularVelocity leaderMotorTarget;
@@ -54,25 +60,46 @@ public class Flywheel extends SubsystemBase {
         }
     }
 
+    private final VoltageOut m_voltReq = new VoltageOut(0.0);
+
     private static final int kNumConfigAttempts = 2;
 
     private static final double kGearRatio = 1;
 
     /* leader and follower motors */
-    private final CANBus kCANBus = new CANBus("*");
-    private final TalonFX leaderMotor = new TalonFX(10, kCANBus);
+    private final CANBus kCANBus = new CANBus("main_canivore");
+    private final TalonFX leaderMotor = new TalonFX(8, kCANBus);
+    private final TalonFX followerMotor = new TalonFX(9, kCANBus);
 
     /* device status signals */
     private final StatusSignal<AngularVelocity> leaderMotorVelocity = leaderMotor.getVelocity(false);
     private final StatusSignal<Current> leaderMotorTorqueCurrent = leaderMotor.getTorqueCurrent(false);
 
-    /* controls used by the leader motors */
+    /* controls used by the leader motor */
     private final VelocityVoltage leaderMotorSetpointRequest = new VelocityVoltage(0);
     private final CoastOut coastRequest = new CoastOut();
 
+    /* controls used by the follower motor */
+    private final Follower followerMotorSetpointRequest = new Follower(8, MotorAlignmentValue.Opposed);
+    private final SysIdRoutine m_sysIdRoutine = new SysIdRoutine(
+            new SysIdRoutine.Config(
+                    null, // Use default ramp rate (1 V/s)
+                    Volts.of(4), // Reduce dynamic step voltage to 4 to prevent brownout
+                    null, // Use default timeout (10 s)
+                          // Log state with Phoenix SignalLogger class
+                    (state) -> SignalLogger.writeString("state", state.toString())),
+            new SysIdRoutine.Mechanism(
+                    (volts) -> {
+                        leaderMotor.setControl(m_voltReq.withOutput(volts.in(Volts)));
+                        followerMotor.setControl(followerMotorSetpointRequest);
+                    },
+                    null,
+                    this));
+
     /* simulation */
     private final DCMotor leaderMotorDCMotors = DCMotor.getKrakenX60Foc(1);
-    private final LinearSystem<N2, N1, N2> leaderMotorFlywheelSystem = LinearSystemId.createDCMotorSystem(leaderMotorDCMotors, 0.004, kGearRatio);
+    private final LinearSystem<N2, N1, N2> leaderMotorFlywheelSystem = LinearSystemId
+            .createDCMotorSystem(leaderMotorDCMotors, 0.004, kGearRatio);
     private final DCMotorSim leaderMotorFlywheelSim = new DCMotorSim(leaderMotorFlywheelSystem, leaderMotorDCMotors);
 
     private static final double kSimLoopPeriod = 0.002; // 2 ms
@@ -81,47 +108,52 @@ public class Flywheel extends SubsystemBase {
 
     /* Mechanism2d visualization for flywheel leaderMotor */
     private final Mechanism2d leaderMotorMech2d = new Mechanism2d(2, 2);
-    private final MechanismLigament2d leaderMotorFlywheelMech2d = leaderMotorMech2d.getRoot("Flywheel Root leaderMotor", 1, 1)
-        .append(new MechanismLigament2d("Flywheel leaderMotor", 1, 0));
+    private final MechanismLigament2d leaderMotorFlywheelMech2d = leaderMotorMech2d
+            .getRoot("Flywheel Root leaderMotor", 1, 1)
+            .append(new MechanismLigament2d("Flywheel leaderMotor", 1, 0));
 
     /** Configs common across all motors. */
     private static final TalonFXConfiguration motorTalonFXInitialConfigs = new TalonFXConfiguration()
-        .withMotorOutput(
-            new MotorOutputConfigs()
-                .withNeutralMode(NeutralModeValue.Brake)
-        )
-        .withCurrentLimits(
-            new CurrentLimitsConfigs()
-                .withStatorCurrentLimit(Amps.of(120))
-                .withStatorCurrentLimitEnable(true)
-        );
+            .withMotorOutput(
+                    new MotorOutputConfigs()
+                            .withNeutralMode(NeutralModeValue.Brake))
+            .withCurrentLimits(
+                    new CurrentLimitsConfigs()
+                            .withStatorCurrentLimit(Amps.of(120))
+                            .withStatorCurrentLimitEnable(true)
+                            .withSupplyCurrentLimit(Amps.of(60))
+                            .withSupplyCurrentLimitEnable(true));
 
     /** Configs for {@link #leaderMotor}. */
     private final TalonFXConfiguration leaderMotorConfigs = motorTalonFXInitialConfigs.clone()
-        .withMotorOutput(
-            motorTalonFXInitialConfigs.MotorOutput.clone()
-                .withInverted(InvertedValue.CounterClockwise_Positive)
-        )
-        .withFeedback(
-            motorTalonFXInitialConfigs.Feedback.clone()
-                .withSensorToMechanismRatio(0.5)
-        )
-        .withSlot0(
-            motorTalonFXInitialConfigs.Slot0.clone()
-                .withKP(0.8)
-                .withKI(0)
-                .withKD(0)
-                .withKS(0)
-                .withKV(0.12)
-                .withKA(0)
-        );
+            .withMotorOutput(
+                    motorTalonFXInitialConfigs.MotorOutput.clone()
+                            .withInverted(InvertedValue.Clockwise_Positive))
+            .withFeedback(
+                    motorTalonFXInitialConfigs.Feedback.clone()
+                            .withSensorToMechanismRatio(1))
+            .withSlot0(
+                    motorTalonFXInitialConfigs.Slot0.clone()
+                            .withKP(0.19188)
+                            .withKI(0)
+                            .withKD(0)
+                            .withKS(0.24746)
+                            .withKV(0.12538)
+                            .withKA(0));
 
     public Flywheel() {
         for (int i = 0; i < kNumConfigAttempts; ++i) {
             var status = leaderMotor.getConfigurator().apply(leaderMotorConfigs);
-            if (status.isOK()) break;
-        }
 
+            if (status.isOK())
+                break;
+        }
+        for (int i = 0; i < kNumConfigAttempts; ++i) {
+            var status = followerMotor.getConfigurator().apply(motorTalonFXInitialConfigs);
+
+            if (status.isOK())
+                break;
+        }
 
         /* set the default command to neutral output */
         setDefaultCommand(coastFlywheel());
@@ -163,12 +195,15 @@ public class Flywheel extends SubsystemBase {
         return run(() -> {
             FlywheelSetpoint t = target.get();
             leaderMotorSetpointRequest.withVelocity(t.leaderMotorTarget);
+
             leaderMotor.setControl(leaderMotorSetpointRequest);
+            followerMotor.setControl(followerMotorSetpointRequest);
         });
     }
 
     /**
-     * Stops driving the Flywheel. We use coast so no energy is used during the braking event.
+     * Stops driving the Flywheel. We use coast so no energy is used during the
+     * braking event.
      *
      * @return Command to run
      */
@@ -182,13 +217,11 @@ public class Flywheel extends SubsystemBase {
     public void periodic() {
         /* refresh all status signals */
         BaseStatusSignal.refreshAll(
-            leaderMotorVelocity,
-            leaderMotorTorqueCurrent
-        );
+                leaderMotorVelocity,
+                leaderMotorTorqueCurrent);
 
         leaderMotorFlywheelMech2d.setLength(
-            leaderMotorVelocity.getValueAsDouble() / 100.0
-        );
+                leaderMotorVelocity.getValueAsDouble() / 100.0);
     }
 
     private void startSimThread() {
@@ -215,12 +248,19 @@ public class Flywheel extends SubsystemBase {
 
             /* Apply the new rotor velocity to the motors (before gear ratio) */
             leaderMotorSim.setRawRotorPosition(
-                Radians.of(leaderMotorFlywheelSim.getAngularPositionRad() * kGearRatio)
-            );
+                    Radians.of(leaderMotorFlywheelSim.getAngularPositionRad() * kGearRatio));
             leaderMotorSim.setRotorVelocity(
-                RadiansPerSecond.of(leaderMotorFlywheelSim.getAngularVelocityRadPerSec() * kGearRatio)
-            );
+                    RadiansPerSecond.of(leaderMotorFlywheelSim.getAngularVelocityRadPerSec() * kGearRatio));
         });
         simNotifier.startPeriodic(kSimLoopPeriod);
     }
+
+    public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
+        return m_sysIdRoutine.quasistatic(direction);
+    }
+
+    public Command sysIdDynamic(SysIdRoutine.Direction direction) {
+        return m_sysIdRoutine.dynamic(direction);
+    }
+
 }

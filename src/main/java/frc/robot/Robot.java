@@ -32,12 +32,12 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
-import frc.robot.subsystems.Flywheel;
-import frc.robot.subsystems.Hood;
 import frc.robot.subsystems.Indexer;
+import frc.robot.subsystems.Indexer.IndexerSetpoint;
 import frc.robot.subsystems.Lintake;
+import frc.robot.subsystems.Shooter;
 import frc.robot.subsystems.Spindexer;
-import frc.robot.subsystems.Turret;
+import frc.robot.subsystems.Spindexer.SpindexerSetpoint;
 import frc.robot.util.CommandGamesirController;
 import frc.robot.util.FuelSim;
 import frc.robot.vision.LoggableRobotPose;
@@ -46,7 +46,7 @@ import frc.robot.vision.PhotonVisionSystem;
 @Logged
 public class Robot extends TimedRobot {
 
-    private enum IntakeMode {
+    public enum IntakeMode {
         /** Mode A: on release, move lintake to 0.1m and stop rollers. */
         A,
         /** Mode B: on release, just stop rollers. */
@@ -76,11 +76,10 @@ public class Robot extends TimedRobot {
 
     private Command m_autonomousCommand;
     public Lintake lintake = new Lintake();
-    public Turret turret = new Turret();
-    public Hood hood = new Hood();
     public Indexer indexer = new Indexer();
     public Spindexer spindexer = new Spindexer();
-    public Flywheel flywheel = new Flywheel();
+    public Shooter shooter;
+
     /* log and replay timestamp and joystick data */
     private final HootAutoReplay m_timeAndJoystickReplay = new HootAutoReplay()
             .withTimestampReplay()
@@ -113,6 +112,11 @@ public class Robot extends TimedRobot {
                                     interrupter -> CommandsLogging.runningInterrupters.put(interrupter, interrupted));
                             CommandsLogging.commandEnded(interrupted);
                         });
+
+        // Initialize shooter after drivetrain so we can pass suppliers
+        shooter = new Shooter(
+                () -> drivetrain.getPose(),
+                () -> drivetrain.getFieldRelativeSpeeds());
 
         configureBindings();
         if (Robot.isSimulation()) {
@@ -163,16 +167,20 @@ public class Robot extends TimedRobot {
         RobotModeTriggers.disabled().whileTrue(
                 drivetrain.applyRequest(() -> idle).ignoringDisable(true));
 
+        // --- Shoot (left trigger) ---
+        // While held: aim turret + hood, spin flywheel, feed indexer/spindexer
         joystick.leftTrigger().whileTrue(
-                Commands.print("Shoot stub: left trigger held"));
+                shooter.buildShootCommand(
+                        spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                        indexer.setTargetTemporary(IndexerSetpoint.Index)));
 
         joystick.rightTrigger().whileTrue(
-                Commands.parallel(
+                Commands.sequence(
                         lintake.setHeightCommand(lintake.getMaxHeightMeters()),
                         lintake.setVelocityCommand(1.0)))
                 .onFalse(
                         Commands.either(
-                                Commands.parallel(
+                                Commands.sequence(
                                         lintake.setHeightCommand(0.1),
                                         lintake.stopCommand()),
                                 lintake.stopCommand(),
@@ -215,8 +223,8 @@ public class Robot extends TimedRobot {
         CommandsLogging.logRequiredSubsystems();
 
         logger.updateMechanismPoses(lintake.getMechanismPose(),
-                turret.getMechanismPose(),
-                hood.getMechanismPose(turret.getMechanismPose().getRotation()));
+                shooter.getTurretMechanismPose(),
+                shooter.getHoodMechanismPose());
 
     }
 

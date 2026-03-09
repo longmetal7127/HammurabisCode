@@ -36,6 +36,27 @@ public class FieldConstants {
   public static final double fieldLength = AprilTagLayoutType.OFFICIAL.getLayout().getFieldLength();
   public static final double fieldWidth = AprilTagLayoutType.OFFICIAL.getLayout().getFieldWidth();
 
+  /** Far corners of the alliance zone (at the driver station wall, field edges). */
+  public static class AllianceZoneCorners {
+    private static final double allianceZoneOffset = Units.inchesToMeters(10);
+
+    // Blue alliance reference frame
+    public static final Translation2d blueLeft =
+        new Translation2d(allianceZoneOffset, fieldWidth - allianceZoneOffset);
+    public static final Translation2d blueRight =
+        new Translation2d(allianceZoneOffset, allianceZoneOffset);
+
+    // Red alliance mirrored across field length
+    public static final Translation2d redLeft =
+        new Translation2d(fieldLength - allianceZoneOffset, allianceZoneOffset);
+    public static final Translation2d redRight =
+        new Translation2d(fieldLength - allianceZoneOffset, fieldWidth - allianceZoneOffset);
+
+    // Backward-compatible aliases (default blue)
+    public static final Translation2d left = blueLeft;
+    public static final Translation2d right = blueRight;
+  }
+
   /**
    * Officially defined and relevant vertical lines found on the field (defined by X-axis offset)
    */

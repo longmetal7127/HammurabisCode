@@ -5,25 +5,19 @@ import static edu.wpi.first.units.Units.Radians;
 import static edu.wpi.first.units.Units.RadiansPerSecond;
 import static edu.wpi.first.units.Units.Rotations;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
-import static edu.wpi.first.units.Units.Volts;
 
 import java.util.Optional;
-import java.util.function.Supplier;
 
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.CANBus;
-import com.ctre.phoenix6.SignalLogger;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
-import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.controls.PositionVoltage;
 import com.ctre.phoenix6.controls.VelocityVoltage;
-import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.FeedbackSensorSourceValue;
-import com.ctre.phoenix6.signals.MotorAlignmentValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.epilogue.Logged;
 import edu.wpi.first.math.geometry.Pose3d;
@@ -38,18 +32,15 @@ import edu.wpi.first.wpilibj.simulation.BatterySim;
 import edu.wpi.first.wpilibj.simulation.DutyCycleEncoderSim;
 import edu.wpi.first.wpilibj.simulation.RoboRioSim;
 import edu.wpi.first.wpilibj.simulation.SingleJointedArmSim;
-import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
-import frc.robot.Robot;
 import frc.robot.util.CRTSolver;
 import frc.robot.util.CRTSolverConfig;
 
 /**
- * Pivot subsystem using TalonFX with Krakenx60 motor
+ * Turret sub-component using TalonFX with Krakenx60 motor.
+ * Not a subsystem – owned and driven by {@link frc.robot.subsystems.Shooter}.
  */
 @Logged(name = "Turret")
-public class Turret extends SubsystemBase {
+public class Turret {
 
   // Constants
   private final DCMotor dcMotor = DCMotor.getKrakenX60(1);
@@ -102,21 +93,6 @@ public class Turret extends SubsystemBase {
   private final DutyCycleEncoderSim absoluteEncoder2Sim;
 
   public double setpoint = 0.0;
-    private final VoltageOut m_voltReq = new VoltageOut(0.0);
-
-    private final SysIdRoutine m_sysIdRoutine = new SysIdRoutine(
-            new SysIdRoutine.Config(
-                    null, // Use default ramp rate (1 V/s)
-                    Volts.of(4), // Reduce dynamic step voltage to 4 to prevent brownout
-                    null, // Use default timeout (10 s)
-                          // Log state with Phoenix SignalLogger class
-                    (state) -> SignalLogger.writeString("sysid-state-turret", state.toString())),
-            new SysIdRoutine.Mechanism(
-                    (volts) -> {
-                        motor.setControl(m_voltReq.withOutput(volts.in(Volts)));
-                    },
-                    null,
-                    this));
 
   /**
    * Creates a new Pivot Subsystem.
@@ -157,7 +133,11 @@ public class Turret extends SubsystemBase {
     config.MotorOutput.NeutralMode = brakeMode
         ? NeutralModeValue.Brake
         : NeutralModeValue.Coast;
-
+    config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
+    config.SoftwareLimitSwitch.ReverseSoftLimitEnable = true;
+    
+    config.SoftwareLimitSwitch.ForwardSoftLimitThreshold = Units.degreesToRotations(145);
+    config.SoftwareLimitSwitch.ReverseSoftLimitThreshold = Units.degreesToRotations(-145);
     config.Feedback.SensorToMechanismRatio = gearRatio;
     config.Feedback.FeedbackSensorSource = FeedbackSensorSourceValue.RotorSensor;
 
@@ -204,7 +184,6 @@ public class Turret extends SubsystemBase {
    * Update simulation and telemetry.
    */
 
-  @Override
   public void periodic() {
     BaseStatusSignal.refreshAll(
         positionSignal,
@@ -235,7 +214,6 @@ public class Turret extends SubsystemBase {
   /**
    * Update simulation.
    */
-  @Override
   public void simulationPeriodic() {
     // Set supply voltage for the TalonFX sim state
     motor.getSimState().setSupplyVoltage(RobotController.getBatteryVoltage());
@@ -370,40 +348,6 @@ public class Turret extends SubsystemBase {
   }
 
   /**
-   * Creates a command to set the pivot to a specific angle.
-   * 
-   * @param angleDegrees The target angle in degrees
-   * @return A command that sets the pivot to the specified angle
-   */
-  public Command setAngleCommand(double angleDegrees) {
-    return runOnce(() -> setAngle(angleDegrees));
-  }
-
-  public Command followAngleCommand(Supplier<Double> angleDegreesSupplier) {
-    return run(() -> setAngle(angleDegreesSupplier.get()));
-  } 
-
-
-  /**
-   * Creates a command to stop the pivot.
-   * 
-   * @return A command that stops the pivot
-   */
-  public Command stopCommand() {
-    return runOnce(() -> setVelocity(0));
-  }
-
-  /**
-   * Creates a command to move the pivot at a specific velocity.
-   * 
-   * @param velocityDegPerSec The target velocity in degrees per second
-   * @return A command that moves the pivot at the specified velocity
-   */
-  public Command moveAtVelocityCommand(double velocityDegPerSec) {
-    return run(() -> setVelocity(velocityDegPerSec));
-  }
-
-  /**
    * Gets the 3D pose of the turret mechanism for visualization.
    * The turret rotates around the Z axis (yaw).
    * 
@@ -414,13 +358,5 @@ public class Turret extends SubsystemBase {
         new Translation3d(0.1651, 0.1016, 0.3349752),
         new Rotation3d(0, 0, Math.toRadians(getAngleDegrees())));
   }
-
-      public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
-        return m_sysIdRoutine.quasistatic(direction);
-    }
-
-    public Command sysIdDynamic(SysIdRoutine.Direction direction) {
-        return m_sysIdRoutine.dynamic(direction);
-    }
 
 }

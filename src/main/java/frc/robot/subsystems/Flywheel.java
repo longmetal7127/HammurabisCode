@@ -3,11 +3,8 @@ package frc.robot.subsystems;
 
 import static edu.wpi.first.units.Units.*;
 
-import java.util.function.Supplier;
-
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.CANBus;
-import com.ctre.phoenix6.SignalLogger;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.Utils;
 import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
@@ -15,9 +12,7 @@ import com.ctre.phoenix6.configs.MotorOutputConfigs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.CoastOut;
 import com.ctre.phoenix6.controls.Follower;
-import com.ctre.phoenix6.controls.VelocityTorqueCurrentFOC;
 import com.ctre.phoenix6.controls.VelocityVoltage;
-import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.MotorAlignmentValue;
@@ -38,13 +33,13 @@ import edu.wpi.first.wpilibj.simulation.DCMotorSim;
 import edu.wpi.first.wpilibj.smartdashboard.Mechanism2d;
 import edu.wpi.first.wpilibj.smartdashboard.MechanismLigament2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
-import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import edu.wpi.first.wpilibj2.command.button.Trigger;
-import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
+/**
+ * Flywheel sub-component using dual TalonFX Kraken motors.
+ * Not a subsystem – owned and driven by {@link frc.robot.subsystems.Shooter}.
+ */
 @Logged
-public class Flywheel extends SubsystemBase {
+public class Flywheel {
     /** Velocity setpoints for the flywheel. */
     public enum FlywheelSetpoint {
         Intake(RotationsPerSecond.of(60)),
@@ -59,8 +54,6 @@ public class Flywheel extends SubsystemBase {
             this.leaderMotorTarget = leaderMotorTarget;
         }
     }
-
-    private final VoltageOut m_voltReq = new VoltageOut(0.0);
 
     private static final int kNumConfigAttempts = 2;
 
@@ -81,20 +74,6 @@ public class Flywheel extends SubsystemBase {
 
     /* controls used by the follower motor */
     private final Follower followerMotorSetpointRequest = new Follower(8, MotorAlignmentValue.Opposed);
-    private final SysIdRoutine m_sysIdRoutine = new SysIdRoutine(
-            new SysIdRoutine.Config(
-                    null, // Use default ramp rate (1 V/s)
-                    Volts.of(4), // Reduce dynamic step voltage to 4 to prevent brownout
-                    null, // Use default timeout (10 s)
-                          // Log state with Phoenix SignalLogger class
-                    (state) -> SignalLogger.writeString("state", state.toString())),
-            new SysIdRoutine.Mechanism(
-                    (volts) -> {
-                        leaderMotor.setControl(m_voltReq.withOutput(volts.in(Volts)));
-                        followerMotor.setControl(followerMotorSetpointRequest);
-                    },
-                    null,
-                    this));
 
     /* simulation */
     private final DCMotor leaderMotorDCMotors = DCMotor.getKrakenX60Foc(1);
@@ -155,8 +134,8 @@ public class Flywheel extends SubsystemBase {
                 break;
         }
 
-        /* set the default command to neutral output */
-        setDefaultCommand(coastFlywheel());
+        /* coast by default */
+        coast();
 
         SmartDashboard.putData("Flywheel leaderMotor", leaderMotorMech2d);
 
@@ -179,41 +158,40 @@ public class Flywheel extends SubsystemBase {
         return leaderMotorTorqueCurrent.getValue();
     }
 
-    public Trigger getTriggerWhenNearTarget(AngularVelocity threshold) {
-        return new Trigger(() -> {
-            return leaderMotorVelocity.isNear(RotationsPerSecond.of(leaderMotorSetpointRequest.Velocity), threshold);
-        });
+    public boolean isNearTarget(AngularVelocity threshold) {
+        return leaderMotorVelocity.isNear(RotationsPerSecond.of(leaderMotorSetpointRequest.Velocity), threshold);
     }
 
     /**
      * Drives the flywheel to the provided velocity setpoint.
      *
-     * @param setpoint Function returning the setpoint to apply
-     * @return Command to run
+     * @param setpoint The setpoint to apply
      */
-    public Command setTarget(Supplier<FlywheelSetpoint> target) {
-        return run(() -> {
-            FlywheelSetpoint t = target.get();
-            leaderMotorSetpointRequest.withVelocity(t.leaderMotorTarget);
+    public void setTargetSetpoint(FlywheelSetpoint setpoint) {
+        leaderMotorSetpointRequest.withVelocity(setpoint.leaderMotorTarget);
+        leaderMotor.setControl(leaderMotorSetpointRequest);
+        followerMotor.setControl(followerMotorSetpointRequest);
+    }
 
-            leaderMotor.setControl(leaderMotorSetpointRequest);
-            followerMotor.setControl(followerMotorSetpointRequest);
-        });
+    /**
+     * Drives the flywheel to the provided velocity (rotations per second).
+     *
+     * @param velocityRPS Target velocity in rotations per second
+     */
+    public void setTarget(double velocityRPS) {
+        leaderMotorSetpointRequest.withVelocity(velocityRPS);
+        leaderMotor.setControl(leaderMotorSetpointRequest);
+        followerMotor.setControl(followerMotorSetpointRequest);
     }
 
     /**
      * Stops driving the Flywheel. We use coast so no energy is used during the
      * braking event.
-     *
-     * @return Command to run
      */
-    public Command coastFlywheel() {
-        return runOnce(() -> {
-            leaderMotor.setControl(coastRequest);
-        });
+    public void coast() {
+        leaderMotor.setControl(coastRequest);
     }
 
-    @Override
     public void periodic() {
         /* refresh all status signals */
         BaseStatusSignal.refreshAll(
@@ -253,14 +231,6 @@ public class Flywheel extends SubsystemBase {
                     RadiansPerSecond.of(leaderMotorFlywheelSim.getAngularVelocityRadPerSec() * kGearRatio));
         });
         simNotifier.startPeriodic(kSimLoopPeriod);
-    }
-
-    public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
-        return m_sysIdRoutine.quasistatic(direction);
-    }
-
-    public Command sysIdDynamic(SysIdRoutine.Direction direction) {
-        return m_sysIdRoutine.dynamic(direction);
     }
 
 }

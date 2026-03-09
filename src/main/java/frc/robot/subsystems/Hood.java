@@ -10,7 +10,6 @@ import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.CommutationConfigs;
 import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
-import com.ctre.phoenix6.configs.ExternalFeedbackConfigs;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXSConfiguration;
 import com.ctre.phoenix6.controls.PositionVoltage;
@@ -31,14 +30,13 @@ import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.simulation.BatterySim;
 import edu.wpi.first.wpilibj.simulation.RoboRioSim;
 import edu.wpi.first.wpilibj.simulation.SingleJointedArmSim;
-import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 /**
- * Hood subsystem using TalonFXS with NEO550 motor
+ * Hood sub-component using TalonFXS with NEO550 motor.
+ * Not a subsystem – owned and driven by {@link frc.robot.subsystems.Shooter}.
  */
 @Logged(name = "Hood")
-public class Hood extends SubsystemBase {
+public class Hood {
 
     // Constants
     private final DCMotor dcMotor = DCMotor.getNeo550(1);
@@ -145,7 +143,6 @@ public class Hood extends SubsystemBase {
     /**
      * Update telemetry.
      */
-    @Override
     public void periodic() {
         BaseStatusSignal.refreshAll(
                 positionSignal,
@@ -158,7 +155,6 @@ public class Hood extends SubsystemBase {
     /**
      * Update simulation.
      */
-    @Override
     public void simulationPeriodic() {
         // Set supply voltage for the TalonFXS sim state
         motor.getSimState().setSupplyVoltage(RobotController.getBatteryVoltage());
@@ -256,16 +252,6 @@ public class Hood extends SubsystemBase {
      */
     public SingleJointedArmSim getSimulation() {
         return pivotSim;
-    }
-
-    /**
-     * Creates a command to set the pivot to a specific angle.
-     * 
-     * @param angleDegrees The target angle in degrees
-     * @return A command that sets the pivot to the specified angle
-     */
-    public Command setAngleCommand(double angleDegrees) {
-        return runOnce(() -> setAngle(angleDegrees));
     }
 
     public Pose3d getMechanismPose(Rotation3d turretRotation) {

@@ -161,11 +161,14 @@ public class Robot extends TimedRobot {
         final var idle = new SwerveRequest.Idle();
 
         RobotModeTriggers.disabled().onTrue(
-                drivetrain.playMusic()
+                drivetrain.playMusic().ignoringDisable(true)
+        );
+        RobotModeTriggers.teleop().onTrue(
+                drivetrain.stopMusic()
         );
 
-        RobotModeTriggers.disabled().whileTrue(
-                drivetrain.applyRequest(() -> idle).ignoringDisable(true));
+        /*RobotModeTriggers.disabled().whileTrue(
+                drivetrain.applyRequest(() -> idle).ignoringDisable(true));*/
 
         // --- Shoot (left trigger) ---
         // While held: aim turret + hood, spin flywheel, feed indexer/spindexer
@@ -177,7 +180,7 @@ public class Robot extends TimedRobot {
         joystick.rightTrigger().whileTrue(
                 Commands.sequence(
                         lintake.setHeightCommand(lintake.getMaxHeightMeters()),
-                        lintake.setVelocityCommand(1.0)))
+                        lintake.setVelocityCommand(0.6)))
                 .onFalse(
                         Commands.either(
                                 Commands.sequence(

@@ -5,6 +5,7 @@ import static edu.wpi.first.units.Units.*;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+import com.ctre.phoenix6.Orchestra;
 import com.ctre.phoenix6.SignalLogger;
 import com.ctre.phoenix6.Utils;
 import com.ctre.phoenix6.hardware.CANcoder;
@@ -34,7 +35,6 @@ import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Subsystem;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
-
 import frc.robot.generated.TunerConstants.TunerSwerveDrivetrain;
 
 /**
@@ -83,7 +83,7 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
                     output -> setControl(m_translationCharacterization.withVolts(output)),
                     null,
                     this));
-
+    
     /*
      * SysId routine for characterizing steer. This is used to find PID gains for
      * the steer motors.
@@ -129,6 +129,8 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     /* The SysId routine to test */
     private SysIdRoutine m_sysIdRoutineToApply = m_sysIdRoutineTranslation;
 
+    private Orchestra m_orchestra = new Orchestra();
+    
     /**
      * Constructs a CTRE SwerveDrivetrain using the specified constants.
      * <p>
@@ -148,6 +150,14 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
         if (Utils.isSimulation()) {
             startSimThread();
         }
+        
+        // Add a single device to the orchestra
+        for(int i = 0; i<modules.length; i++) {
+            m_orchestra.addInstrument(this.getModules()[i].getDriveMotor(),i);
+        }
+
+        // Attempt to load the chrp
+        m_orchestra.loadMusic("robotvictory.chrp");
     }
 
     /**
@@ -286,6 +296,10 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
      */
     public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
         return m_sysIdRoutineToApply.quasistatic(direction);
+    }
+
+    public Command playMusic() {
+        return runOnce(() -> m_orchestra.play());
     }
 
     /**

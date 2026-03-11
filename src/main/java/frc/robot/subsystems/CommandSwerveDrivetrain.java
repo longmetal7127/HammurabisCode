@@ -154,15 +154,14 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
             startSimThread();
         }
         
-        // Add a single device to the orchestra
+        // Add a devices to the orchestra (for the victory theme)
         for(int i = 0; i<modules.length; i++) {
-            m_orchestra.addInstrument(this.getModules()[i].getDriveMotor(),i);
+            m_orchestra.addInstrument(this.getModules()[i].getDriveMotor(),i-1);
         }
 
 
         // Attempt to load the chrp
-        var response = m_orchestra.loadMusic("tgif.chrp");
-        System.out.println(response.value);
+        var response = m_orchestra.loadMusic("victory.chrp");
     }
 
     /**

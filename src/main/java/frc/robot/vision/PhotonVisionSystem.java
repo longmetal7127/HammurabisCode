@@ -1,8 +1,6 @@
 package frc.robot.vision;
 
-import static edu.wpi.first.units.Units.Degrees;
 import static edu.wpi.first.units.Units.Inches;
-import static edu.wpi.first.units.Units.Meters;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,7 +11,6 @@ import java.util.function.Supplier;
 import org.photonvision.PhotonCamera;
 import org.photonvision.PhotonPoseEstimator;
 import org.photonvision.simulation.PhotonCameraSim;
-import org.photonvision.simulation.SimCameraProperties;
 import org.photonvision.simulation.VisionSystemSim;
 import org.photonvision.targeting.PhotonTrackedTarget;
 import org.photonvision.targeting.TargetCorner;
@@ -26,8 +23,6 @@ import edu.wpi.first.apriltag.AprilTagFields;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
-import edu.wpi.first.math.geometry.Rotation3d;
-import edu.wpi.first.math.geometry.Transform2d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.networktables.NetworkTable;
@@ -66,134 +61,189 @@ public class PhotonVisionSystem {
         27, new Translation3d(Inches.of(-23.5), Inches.of(14), Inches.of(33))
     ));
 
-    PhotonCamera targetCamera = new PhotonCamera("camera");
-    Transform3d robotToCamera = new Transform3d(
-        /* X, Y, Z */
-        new Translation3d(Meters.of(-0.5), Meters.of(0), Meters.of(0.5)),
-        /* Roll, Pitch, Yaw */
-        /* A pitch of -40 degrees appears to see the apriltags  */
-        new Rotation3d(Degrees.of(0), Degrees.of(-40), Degrees.of(180)));
-    
+    /**
+     * Per-camera runtime state. Each camera has its own PhotonCamera, estimator,
+     * pose array, and HootAutoReplay entries so they log independently.
+     */
+    private static class CameraState {
+        final String name;
+        final PhotonCamera camera;
+        final Transform3d robotToCamera;
+        final PhotonPoseEstimator estimator;
+        PhotonCameraSim cameraSim;
+
+        /* Per-camera logged data */
+        LoggableRobotPose[] poses = new LoggableRobotPose[0];
+        double timeOfLastTrackedHubTarget = 0;
+        PhotonTrackedTarget lastTrackedHubTarget = new PhotonTrackedTarget(
+            0, 0, 0, 0, -1, -1, 0, Transform3d.kZero, Transform3d.kZero, 0,
+            new ArrayList<TargetCorner>(), new ArrayList<TargetCorner>());
+        Pose3d hubTarget = Pose3d.kZero;
+        Rotation2d hubHeading = Rotation2d.kZero;
+
+        final HootAutoReplay autoReplay;
+
+        CameraState(CameraConfig config, AprilTagFieldLayout tagLayout) {
+            this.name = config.name();
+            this.camera = new PhotonCamera(config.name());
+            this.robotToCamera = config.robotToCamera();
+            this.estimator = new PhotonPoseEstimator(tagLayout, config.robotToCamera());
+
+            /* Each camera gets its own log namespace so they can be reviewed independently */
+            this.autoReplay = new HootAutoReplay()
+                .withStructArray(name + "/PoseEstimations", LoggableRobotPose.struct,
+                    () -> poses, val -> poses = val.value)
+                .withStruct(name + "/HubTarget", Pose3d.struct,
+                    () -> hubTarget, val -> hubTarget = val.value)
+                .withStruct(name + "/HubHeading", Rotation2d.struct,
+                    () -> hubHeading, val -> hubHeading = val.value)
+                .withProtobuf(name + "/LastTrackedHubTarget", PhotonTrackedTarget.proto,
+                    () -> lastTrackedHubTarget, val -> lastTrackedHubTarget = val.value)
+                .withDouble(name + "/LastTrackedHubTargetTime",
+                    () -> timeOfLastTrackedHubTarget, val -> timeOfLastTrackedHubTarget = val.value);
+        }
+    }
+
+    private final CameraState[] cameras;
+
     /* Use the current robot heading to keep track of where to target when aiming for the hub */
     Supplier<Pose2d> currentRobotPose;
-
-    PhotonPoseEstimator estimator = new PhotonPoseEstimator(TagLayout, robotToCamera);
     Consumer<LoggableRobotPose> poseConsumer;
 
-    PhotonCameraSim cameraSim = new PhotonCameraSim(targetCamera);
-    VisionSystemSim visionSim = new VisionSystemSim("Camera Sim");
-    LoggableRobotPose[] allPoses = new LoggableRobotPose[0];
+    /* Combined hub target state (best across all cameras) */
     double timeOfLastTrackedHubTarget = 0;
-    PhotonTrackedTarget lastTrackedHubTarget = new PhotonTrackedTarget(0, 0, 0, 0, -1, -1, 0, Transform3d.kZero, Transform3d.kZero, 0, new ArrayList<TargetCorner>(), new ArrayList<TargetCorner>());
     Pose3d hubTarget = Pose3d.kZero;
     Rotation2d hubHeading = Rotation2d.kZero;
 
-    /* Hoot replay/autologging */
-    private final HootAutoReplay autoReplay = new HootAutoReplay()
-        /* We need to fetch the latest result from the photoncamera when not replaying, otherwise we need to fill the list of results when we are replaying */
-        .withStructArray("Camera/PoseEstimations", LoggableRobotPose.struct, () -> allPoses, val -> allPoses = val.value)
-        .withStruct("Camera/HubTarget", Pose3d.struct, () -> hubTarget, val -> hubTarget = val.value)
-        .withStruct("Camera/HubHeading", Rotation2d.struct, () -> hubHeading, val -> hubHeading = val.value)
-        .withProtobuf("Camera/LastTrackedHubTarget", PhotonTrackedTarget.proto, () -> lastTrackedHubTarget, val -> lastTrackedHubTarget = val.value)
-        .withDouble("Camera/LastTrackedHubTargetTime", () -> timeOfLastTrackedHubTarget, val -> timeOfLastTrackedHubTarget = val.value);
+    VisionSystemSim visionSim = new VisionSystemSim("Camera Sim");
 
     private final NetworkTable cameraTable = NetworkTableInstance.getDefault().getTable("CameraDetails");
     private final StructPublisher<Pose3d> hubTargetPublisher = cameraTable.getStructTopic("HubTarget", Pose3d.struct).publish();
     private final StructPublisher<Rotation2d> hubHeadingPublisher = cameraTable.getStructTopic("HubHeading", Rotation2d.struct).publish();
-    
-    public PhotonVisionSystem(Consumer<LoggableRobotPose> poseConsumer, Supplier<Pose2d> currentRobotPose) {
+
+    /**
+     * Create a multi-camera vision system.
+     * @param poseConsumer Called with each robot pose estimate from any camera
+     * @param currentRobotPose Supplier for the current robot pose (from drivetrain)
+     * @param configs One CameraConfig per physical camera (name + transform)
+     */
+    public PhotonVisionSystem(Consumer<LoggableRobotPose> poseConsumer, Supplier<Pose2d> currentRobotPose,
+                              CameraConfig... configs) {
         this.poseConsumer = poseConsumer;
         this.currentRobotPose = currentRobotPose;
 
+        cameras = new CameraState[configs.length];
+        for (int i = 0; i < configs.length; i++) {
+            cameras[i] = new CameraState(configs[i], TagLayout);
+        }
 
         // ----- Simulation
         if (Robot.isSimulation() && false) {
-            // Create the vision system simulation which handles cameras and targets on the field.
             visionSim = new VisionSystemSim("main");
-            // Add all the AprilTags inside the tag layout as visible targets to this simulated field.
             visionSim.addAprilTags(TagLayout);
-            // Create simulated camera properties. These can be set to mimic your actual camera.
-            var cameraProp = new SimCameraProperties();
-            cameraProp.setCalibration(960, 720, Rotation2d.fromDegrees(90));
-            cameraProp.setCalibError(0.35, 0.10);
-            cameraProp.setFPS(15);
-            cameraProp.setAvgLatencyMs(50);
-            cameraProp.setLatencyStdDevMs(15);
-            // Create a PhotonCameraSim which will update the linked PhotonCamera's values with visible
-            // targets.
-            cameraSim = new PhotonCameraSim(targetCamera, cameraProp);
-            // Add the simulated camera to view the targets on this simulated field.
-            visionSim.addCamera(cameraSim, robotToCamera);
-
-            cameraSim.enableDrawWireframe(true);
+            for (CameraState cam : cameras) {
+                cam.cameraSim = new PhotonCameraSim(cam.camera);
+                visionSim.addCamera(cam.cameraSim, cam.robotToCamera);
+                cam.cameraSim.enableDrawWireframe(true);
+            }
         }
     }
 
     public void periodic() {
         Alliance currentAlliance = DriverStation.getAlliance().orElse(Alliance.Red);
-        if (!Utils.isReplay()) {
-            /* If this is not replay, get the hardware/simulated results from the camera */
-            var allResults = targetCamera.getAllUnreadResults();
-            var estimates = new ArrayList<LoggableRobotPose>();
 
-            int[] hubTargetIds;
-            /* Figure out if we should use red alliance hub ids or blue alliance hub ids */
-            if (currentAlliance == Alliance.Red) {
-                hubTargetIds = RedHubApriltagIds;
-            } else {
-                hubTargetIds = BlueHubApriltagIds;
-            }
+        int[] hubTargetIds;
+        if (currentAlliance == Alliance.Red) {
+            hubTargetIds = RedHubApriltagIds;
+        } else {
+            hubTargetIds = BlueHubApriltagIds;
+        }
 
-            /* Process them */
-            for (var result : allResults) {
-                var allTargets = result.getTargets();
-                /* Pick the target with the lowest ambiguity */
-                PhotonTrackedTarget bestTarget = null;
-                for (PhotonTrackedTarget target : allTargets) {
-                    /* Check that the apriltag id is a hub ID */
-                    if (Arrays.stream(hubTargetIds).anyMatch(x -> x == target.fiducialId)) {
-                        /* If we've never assigned the best target, use this one */
-                        if (bestTarget == null) {
-                            bestTarget = target;
-                        }
-                        /* Otherwise only update the target if this is a better ambiguity */
-                        else if (target.poseAmbiguity < bestTarget.poseAmbiguity && target.poseAmbiguity > 0) {
-                            bestTarget = target;
+        double bestAmbiguityThisCycle = Double.MAX_VALUE;
+        PhotonTrackedTarget bestHubTargetThisCycle = null;
+        Transform3d bestHubCameraTransform = null;
+
+        for (CameraState cam : cameras) {
+            if (!Utils.isReplay()) {
+                var allResults = cam.camera.getAllUnreadResults();
+                var estimates = new ArrayList<LoggableRobotPose>();
+
+                for (var result : allResults) {
+                    var allTargets = result.getTargets();
+
+                    PhotonTrackedTarget bestTargetInResult = null;
+                    for (PhotonTrackedTarget target : allTargets) {
+                        if (Arrays.stream(hubTargetIds).anyMatch(x -> x == target.fiducialId)) {
+                            if (bestTargetInResult == null) {
+                                bestTargetInResult = target;
+                            } else if (target.poseAmbiguity < bestTargetInResult.poseAmbiguity
+                                       && target.poseAmbiguity > 0) {
+                                bestTargetInResult = target;
+                            }
                         }
                     }
-                }
-                /* And if we have a best target, use it */
-                if (bestTarget != null) {
-                    lastTrackedHubTarget = bestTarget;
-                    timeOfLastTrackedHubTarget = Utils.getCurrentTimeSeconds();
-                    Transform3d tagRelativeToRobot = lastTrackedHubTarget.bestCameraToTarget;
-                    var transformToHub = currentAlliance == Alliance.Red ? RedHub.getHubPose(lastTrackedHubTarget.fiducialId) :
-                                                          BlueHub.getHubPose(lastTrackedHubTarget.fiducialId);
-                    var robotPose = currentRobotPose.get();
-                    hubTarget = new Pose3d(robotPose).transformBy(robotToCamera).transformBy(tagRelativeToRobot).transformBy(transformToHub);
-                    var hubRelativeToRobot = hubTarget.relativeTo(new Pose3d(robotPose));
-                    hubHeading = robotPose.getRotation().plus(hubRelativeToRobot.getTranslation().toTranslation2d().getAngle()
-                            .plus(currentAlliance == Alliance.Blue ? Rotation2d.k180deg : Rotation2d.kZero));
+
+                    if (bestTargetInResult != null) {
+                        cam.lastTrackedHubTarget = bestTargetInResult;
+                        cam.timeOfLastTrackedHubTarget = Utils.getCurrentTimeSeconds();
+                        Transform3d tagRelativeToRobot = bestTargetInResult.bestCameraToTarget;
+                        var transformToHub = currentAlliance == Alliance.Red
+                            ? RedHub.getHubPose(bestTargetInResult.fiducialId)
+                            : BlueHub.getHubPose(bestTargetInResult.fiducialId);
+                        var robotPose = currentRobotPose.get();
+                        cam.hubTarget = new Pose3d(robotPose)
+                            .transformBy(cam.robotToCamera)
+                            .transformBy(tagRelativeToRobot)
+                            .transformBy(transformToHub);
+                        var hubRelativeToRobot = cam.hubTarget.relativeTo(new Pose3d(robotPose));
+                        cam.hubHeading = robotPose.getRotation().plus(
+                            hubRelativeToRobot.getTranslation().toTranslation2d().getAngle()
+                                .plus(currentAlliance == Alliance.Blue ? Rotation2d.k180deg : Rotation2d.kZero));
+
+                        /* Check if this is the best hub target across all cameras */
+                        if (bestTargetInResult.poseAmbiguity < bestAmbiguityThisCycle
+                            || bestHubTargetThisCycle == null) {
+                            bestAmbiguityThisCycle = bestTargetInResult.poseAmbiguity;
+                            bestHubTargetThisCycle = bestTargetInResult;
+                            bestHubCameraTransform = cam.robotToCamera;
+                        }
+                    }
+
+                    var estimate = cam.estimator.estimateCoprocMultiTagPose(result);
+                    if (estimate.isEmpty()) {
+                        estimate = cam.estimator.estimateLowestAmbiguityPose(result);
+                    }
+                    estimate.ifPresent(val -> estimates.add(
+                        new LoggableRobotPose(val.estimatedPose, val.timestampSeconds)));
                 }
 
-                var estimate = estimator.estimateCoprocMultiTagPose(result);
-                if (estimate.isEmpty()) {
-                    estimate = estimator.estimateLowestAmbiguityPose(result);
-                }
-                estimate.ifPresent(val -> estimates.add(new LoggableRobotPose(val.estimatedPose, val.timestampSeconds)));
+                cam.poses = estimates.toArray(new LoggableRobotPose[0]);
             }
 
-            /* And save them so we can feed them to the drivetrain */
-            allPoses = estimates.toArray(new LoggableRobotPose[0]);
+            cam.autoReplay.update();
+
+            for (LoggableRobotPose pose : cam.poses) {
+                poseConsumer.accept(pose);
+            }
         }
 
-        /* Auto-log the poses as they come in, or pull them from the log if we're in replay */
-        autoReplay.update();
-
-        /* And process every pose we got */
-        for(LoggableRobotPose pose : allPoses) {
-            poseConsumer.accept(pose);
+        if (bestHubTargetThisCycle != null) {
+            timeOfLastTrackedHubTarget = Utils.getCurrentTimeSeconds();
+            Transform3d tagRelativeToRobot = bestHubTargetThisCycle.bestCameraToTarget;
+            var transformToHub = currentAlliance == Alliance.Red
+                ? RedHub.getHubPose(bestHubTargetThisCycle.fiducialId)
+                : BlueHub.getHubPose(bestHubTargetThisCycle.fiducialId);
+            var robotPose = currentRobotPose.get();
+            hubTarget = new Pose3d(robotPose)
+                .transformBy(bestHubCameraTransform)
+                .transformBy(tagRelativeToRobot)
+                .transformBy(transformToHub);
+            var hubRelativeToRobot = hubTarget.relativeTo(new Pose3d(robotPose));
+            hubHeading = robotPose.getRotation().plus(
+                hubRelativeToRobot.getTranslation().toTranslation2d().getAngle()
+                    .plus(currentAlliance == Alliance.Blue ? Rotation2d.k180deg : Rotation2d.kZero));
         }
+
         hubTargetPublisher.accept(hubTarget);
         hubHeadingPublisher.accept(hubHeading);
     }
@@ -201,17 +251,21 @@ public class PhotonVisionSystem {
     public void simPeriodic(Pose2d simPose) {
         visionSim.update(simPose);
     }
+
     /** A Field2d for visualizing our robot and objects on the field. */
     public Field2d getSimDebugField() {
         if (!Robot.isSimulation()) return null;
         return visionSim.getDebugField();
     }
+
     public boolean isHubTargetValid() {
         return Utils.getCurrentTimeSeconds() - timeOfLastTrackedHubTarget < 0.2;
     }
+
     public Pose3d getHubPoseRelativeToRobot() {
         return hubTarget;
     }
+
     public Rotation2d getHeadingToHubFieldRelative() {
         return hubHeading;
     }

@@ -72,13 +72,18 @@ public class ShootOnTheFlyCalculator {
   }
 
   /**
-   * Calculates shooter parameters compensating for robot motion.
+   * Calculates shooter parameters compensating for robot motion using Newton's method on the
+   * time-of-flight residual.
+   *
    *
    * @param robotPosition Current robot position on field
    * @param robotVelocity Current robot velocity (field-relative, m/s)
    * @param goalPosition Goal/target position on field
    * @param latencyCompensation Additional time to project position forward (seconds)
    * @return Shooter command with turret angle, RPM, and hood angle
+   * @see <a
+   *     href="https://docs.wpilib.org/en/stable/docs/software/advanced-controls/fire-control/newton-shooting.html">Newton's
+   *     Method for Dynamic Shooting</a>
    */
   public ShooterCommand calculate(
       Translation2d robotPosition,
@@ -89,82 +94,62 @@ public class ShootOnTheFlyCalculator {
     // 1. Project future position (account for latency)
     Translation2d futurePos = robotPosition.plus(robotVelocity.times(latencyCompensation));
 
-    // 2. Get target vector
-    Translation2d toGoal = goalPosition.minus(futurePos);
-    double distance = toGoal.getNorm();
-    Translation2d targetDirection = toGoal.div(distance);
+    // 2. Static displacement to goal (before velocity compensation)
+    Translation2d staticToGoal = goalPosition.minus(futurePos);
+    double staticDistance = staticToGoal.getNorm();
 
-    // 3. Look up baseline parameters from table
-    ShooterParams baseline = shooterTable.get(distance);
-    double baselineVelocity = distance / baseline.timeOfFlight();
+    // 3. Compute the projectile speed v_p from the static lookup (used for proxy derivative)
+    ShooterParams staticParams = shooterTable.get(staticDistance);
+    double vp = staticDistance / staticParams.timeOfFlight();
 
-    // 4. Build target velocity vector (velocity needed to reach goal)
-    Translation2d targetVelocity = targetDirection.times(baselineVelocity);
-
-    // 5. THE MAGIC: subtract robot velocity to get required shot velocity
-    Translation2d shotVelocity = targetVelocity.minus(robotVelocity);
-
-    // 6. Extract turret angle and required velocity magnitude
-    Rotation2d turretAngle = shotVelocity.getAngle();
-    double requiredVelocity = shotVelocity.getNorm();
-
-    // 7. Use Option 3: adjust both RPM and hood angle
-    ShooterCommand adjusted = calculateBothAdjustments(distance, baseline, requiredVelocity);
-
-    return new ShooterCommand(
-        turretAngle, adjusted.rpm(), adjusted.hoodAngle(), adjusted.effectiveDistance());
-  }
-
-  /**
-   * Option 3: Adjusts both RPM and hood angle to achieve required velocity. Splits the correction
-   * evenly between the two systems using sqrt for equal contribution.
-   *
-   * @param distance Actual distance to target
-   * @param baseline Baseline parameters from lookup table
-   * @param requiredVelocity Required horizontal velocity magnitude
-   * @return Adjusted shooter command
-   */
-  private ShooterCommand calculateBothAdjustments(
-      double distance, ShooterParams baseline, double requiredVelocity) {
-
-    /*
-    baseline is how fast you need to shoot given 0 velocity robot movement
-    requiredVelocity is how fast the ball needs to exit your shooter when accounting for robot velocity
-
-    Tof(x) is map from distance -> time traveled.
-    Vel(distance) = distance / Tof(distance) = velocity
-
-    we'll use newton's method to figure out wwhat distance input generates our desired velocity.
-    we can look for the roots of f(x) = Vel(x) - requiredVelocity to get us our shooter params, where Vel(x) = x/Tof(x)
-
-    x_n+1 = x_n - f(x_n) / f'(x_n)
-
-    f(x_n) = currentVelocity - requiredVelocity
-    f'(x_n) = Vel'(x)
-
-    */
-
-    ShooterParams currentParams = baseline;
-    double currentDistance = distance;
-    double currentTime = currentParams.timeOfFlight();
-    double currentVelocity = currentDistance / currentTime;
-
-    // 10 rounds for now
-    for (int i = 0; i < 10 && Math.abs(currentVelocity - requiredVelocity) > 0.005; i++) {
-      // estimate d/dx ((Vel(x)) - requiredVelocity) = d/dx (Vel(x)) by taking a tiny slope
-      final double EPSILON = 0.001;
-      double lowVel =
-          (currentDistance - EPSILON) / shooterTable.get(currentDistance - EPSILON).timeOfFlight();
-      double highVel =
-          (currentDistance + EPSILON) / shooterTable.get(currentDistance + EPSILON).timeOfFlight();
-      double velDeriv = (highVel - lowVel) / (EPSILON * 2);
-      currentDistance -= (currentVelocity - requiredVelocity) / velDeriv;
-      // update currentVelocity with f(x+1)
-      currentParams = shooterTable.get(currentDistance);
-      currentTime = currentParams.timeOfFlight();
-      currentVelocity = currentDistance / currentTime;
+    // 4. Initial TOF guess: τ_0 = D / (v_p + |v| * cos(θ))
+    //    This accounts for the robot velocity component toward the target and avoids
+    //    converging to the wrong root at high speeds.
+    double robotSpeed = robotVelocity.getNorm();
+    double cosTheta = 0.0;
+    if (robotSpeed > 1e-6 && staticDistance > 1e-6) {
+      // cos(θ) = dot(toGoal, velocity) / (|toGoal| * |velocity|)
+      cosTheta =
+          (staticToGoal.getX() * robotVelocity.getX()
+                  + staticToGoal.getY() * robotVelocity.getY())
+              / (staticDistance * robotSpeed);
     }
+    double tau = staticDistance / (vp + robotSpeed * cosTheta);
+
+    // 5. Newton iteration on the TOF residual: E(τ) = τ - τ_LUT(D(τ))
+    for (int i = 0; i < 10; i++) {
+      // Step 1: Virtual target displacement at current TOF guess
+      Translation2d d = staticToGoal.minus(robotVelocity.times(tau));
+      double D = d.getNorm();
+
+      // Step 2: Residual — look up the table TOF at this distance
+      ShooterParams params = shooterTable.get(D);
+      double tauLUT = params.timeOfFlight();
+      double E = tau - tauLUT;
+
+      // Check convergence (within ~5ms)
+      if (Math.abs(E) < 0.005) {
+        break;
+      }
+
+      // Step 3 & 4: Proxy derivative E' = 1 + (d·v) / (v_p * D)
+      //   where dD/dτ = -(d·v)/D, and τ'(D) ≈ 1/v_p (constant-velocity proxy)
+      double dDotV = d.getX() * robotVelocity.getX() + d.getY() * robotVelocity.getY();
+      double EPrime = 1.0 + dDotV / (vp * D);
+
+      // Step 5: Newton update
+      tau -= E / EPrime;
+    }
+
+    // 6. Final solution: compute virtual target at converged TOF
+    Translation2d d = staticToGoal.minus(robotVelocity.times(tau));
+    double effectiveDistance = d.getNorm();
+    Rotation2d turretAngle = d.getAngle();
+
+    // 7. Look up RPM and hood angle at the effective distance
+    ShooterParams finalParams = shooterTable.get(effectiveDistance);
+
     return new ShooterCommand(
-        null, currentParams.rpm(), currentParams.hoodAngle(), currentDistance);
+        turretAngle, finalParams.rpm(), finalParams.hoodAngle(), effectiveDistance);
   }
 }

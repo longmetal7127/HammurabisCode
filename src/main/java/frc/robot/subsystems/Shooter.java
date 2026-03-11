@@ -1,5 +1,8 @@
 package frc.robot.subsystems;
 
+import static edu.wpi.first.units.Units.Inches;
+import static edu.wpi.first.units.Units.MetersPerSecond;
+import static edu.wpi.first.units.Units.Radians;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
 
 import java.util.function.Supplier;
@@ -10,12 +13,16 @@ import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.math.util.Units;
 import edu.wpi.first.units.measure.AngularVelocity;
+import edu.wpi.first.wpilibj.RobotBase;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.FieldConstants;
 import frc.robot.subsystems.Flywheel.FlywheelSetpoint;
+import frc.robot.util.FuelSim;
 import frc.robot.util.ShootOnTheFlyCalculator;
 
 /**
@@ -36,19 +43,31 @@ public class Shooter extends SubsystemBase {
 
     private final Supplier<Pose2d> poseSupplier;
     private final Supplier<ChassisSpeeds> fieldRelativeSpeedsSupplier;
+    private final FuelSim fuelSim;
 
     private final ShootOnTheFlyCalculator sotfCalculator = buildSOTFCalculator();
+
+    // ── Fuel-sim shooting ────────────────────────────────────────────────
+    /** Minimum interval between simulated fuel spawns (seconds). */
+    private static final double FUEL_SPAWN_INTERVAL = 0.25;
+    /** Flywheel radius used to convert angular velocity to linear exit speed (meters). */
+    private static final double FLYWHEEL_RADIUS = Units.inchesToMeters(2.0);
+
+    private final Timer fuelSpawnTimer = new Timer();
 
 
     /**
      * @param poseSupplier               Supplies the robot's current field pose
      * @param fieldRelativeSpeedsSupplier Supplies the robot's field-relative chassis speeds
+     * @param fuelSim                     The FuelSim instance for spawning simulated projectiles
      */
     public Shooter(
             Supplier<Pose2d> poseSupplier,
-            Supplier<ChassisSpeeds> fieldRelativeSpeedsSupplier) {
+            Supplier<ChassisSpeeds> fieldRelativeSpeedsSupplier,
+            FuelSim fuelSim) {
         this.poseSupplier = poseSupplier;
         this.fieldRelativeSpeedsSupplier = fieldRelativeSpeedsSupplier;
+        this.fuelSim = fuelSim;
     }
 
 
@@ -150,6 +169,34 @@ public class Shooter extends SubsystemBase {
         return calc;
     }
 
+    // ── Fuel simulation ──────────────────────────────────────────────────
+
+    /**
+     * Spawns a simulated fuel projectile into the FuelSim using
+     * {@link FuelSim#launchFuel} based on the current turret angle,
+     * hood angle, and flywheel speed.
+     *
+     * <p>Only spawns in simulation and rate-limited by {@link #FUEL_SPAWN_INTERVAL}.
+     */
+    private void trySpawnSimulatedFuel() {
+        if (!RobotBase.isSimulation()) return;
+        if (fuelSpawnTimer.get() < FUEL_SPAWN_INTERVAL) return;
+        fuelSpawnTimer.restart();
+
+        double hoodPitchRad = Units.rotationsToRadians(hood.getPosition());
+
+        double turretYawRad = Math.toRadians(turret.getAngleDegrees());
+
+        double flywheelRPS = flywheel.getleaderMotorVelocity().in(RotationsPerSecond);
+        double exitSpeedMps = Math.abs(flywheelRPS) * 2.0 * Math.PI * FLYWHEEL_RADIUS;
+
+        fuelSim.launchFuel(
+                MetersPerSecond.of(exitSpeedMps),
+                Radians.of(hoodPitchRad),
+                Radians.of(turretYawRad),
+                Inches.of(22)); // launch height — above bumper height
+    }
+
     // ── Commands ─────────────────────────────────────────────────────────
 
     /**
@@ -185,9 +232,14 @@ public class Shooter extends SubsystemBase {
         }).alongWith(
                 // Spindexer + indexer: wait for flywheel to reach speed, then feed
                 Commands.waitUntil(() -> flywheel.isNearTarget(RotationsPerSecond.of(5)))
-                        .andThen(Commands.parallel(
-                                spindexerFeedCommand,
-                                indexerFeedCommand))
+                        .andThen(
+                                // Reset spawn timer so the first fuel fires immediately
+                                Commands.runOnce(() -> fuelSpawnTimer.restart()),
+                                Commands.parallel(
+                                        spindexerFeedCommand,
+                                        indexerFeedCommand,
+                                        // Periodically spawn simulated fuel while feeding
+                                        Commands.run(this::trySpawnSimulatedFuel)))
         ).withName("Shoot");
     }
 

@@ -138,7 +138,7 @@ public class PhotonVisionSystem {
         }
 
         // ----- Simulation
-        if (Robot.isSimulation() && false) {
+        if (Robot.isSimulation() ) {
             visionSim = new VisionSystemSim("main");
             visionSim.addAprilTags(TagLayout);
             for (CameraState cam : cameras) {
@@ -150,14 +150,7 @@ public class PhotonVisionSystem {
     }
 
     public void periodic() {
-        Alliance currentAlliance = DriverStation.getAlliance().orElse(Alliance.Red);
 
-        int[] hubTargetIds;
-        if (currentAlliance == Alliance.Red) {
-            hubTargetIds = RedHubApriltagIds;
-        } else {
-            hubTargetIds = BlueHubApriltagIds;
-        }
 
         double bestAmbiguityThisCycle = Double.MAX_VALUE;
         PhotonTrackedTarget bestHubTargetThisCycle = null;
@@ -169,46 +162,6 @@ public class PhotonVisionSystem {
                 var estimates = new ArrayList<LoggableRobotPose>();
 
                 for (var result : allResults) {
-                    var allTargets = result.getTargets();
-
-                    PhotonTrackedTarget bestTargetInResult = null;
-                    for (PhotonTrackedTarget target : allTargets) {
-                        if (Arrays.stream(hubTargetIds).anyMatch(x -> x == target.fiducialId)) {
-                            if (bestTargetInResult == null) {
-                                bestTargetInResult = target;
-                            } else if (target.poseAmbiguity < bestTargetInResult.poseAmbiguity
-                                       && target.poseAmbiguity > 0) {
-                                bestTargetInResult = target;
-                            }
-                        }
-                    }
-
-                    if (bestTargetInResult != null) {
-                        cam.lastTrackedHubTarget = bestTargetInResult;
-                        cam.timeOfLastTrackedHubTarget = Utils.getCurrentTimeSeconds();
-                        Transform3d tagRelativeToRobot = bestTargetInResult.bestCameraToTarget;
-                        var transformToHub = currentAlliance == Alliance.Red
-                            ? RedHub.getHubPose(bestTargetInResult.fiducialId)
-                            : BlueHub.getHubPose(bestTargetInResult.fiducialId);
-                        var robotPose = currentRobotPose.get();
-                        cam.hubTarget = new Pose3d(robotPose)
-                            .transformBy(cam.robotToCamera)
-                            .transformBy(tagRelativeToRobot)
-                            .transformBy(transformToHub);
-                        var hubRelativeToRobot = cam.hubTarget.relativeTo(new Pose3d(robotPose));
-                        cam.hubHeading = robotPose.getRotation().plus(
-                            hubRelativeToRobot.getTranslation().toTranslation2d().getAngle()
-                                .plus(currentAlliance == Alliance.Blue ? Rotation2d.k180deg : Rotation2d.kZero));
-
-                        /* Check if this is the best hub target across all cameras */
-                        if (bestTargetInResult.poseAmbiguity < bestAmbiguityThisCycle
-                            || bestHubTargetThisCycle == null) {
-                            bestAmbiguityThisCycle = bestTargetInResult.poseAmbiguity;
-                            bestHubTargetThisCycle = bestTargetInResult;
-                            bestHubCameraTransform = cam.robotToCamera;
-                        }
-                    }
-
                     var estimate = cam.estimator.estimateCoprocMultiTagPose(result);
                     if (estimate.isEmpty()) {
                         estimate = cam.estimator.estimateLowestAmbiguityPose(result);
@@ -227,23 +180,7 @@ public class PhotonVisionSystem {
             }
         }
 
-        if (bestHubTargetThisCycle != null) {
-            timeOfLastTrackedHubTarget = Utils.getCurrentTimeSeconds();
-            Transform3d tagRelativeToRobot = bestHubTargetThisCycle.bestCameraToTarget;
-            var transformToHub = currentAlliance == Alliance.Red
-                ? RedHub.getHubPose(bestHubTargetThisCycle.fiducialId)
-                : BlueHub.getHubPose(bestHubTargetThisCycle.fiducialId);
-            var robotPose = currentRobotPose.get();
-            hubTarget = new Pose3d(robotPose)
-                .transformBy(bestHubCameraTransform)
-                .transformBy(tagRelativeToRobot)
-                .transformBy(transformToHub);
-            var hubRelativeToRobot = hubTarget.relativeTo(new Pose3d(robotPose));
-            hubHeading = robotPose.getRotation().plus(
-                hubRelativeToRobot.getTranslation().toTranslation2d().getAngle()
-                    .plus(currentAlliance == Alliance.Blue ? Rotation2d.k180deg : Rotation2d.kZero));
-        }
-
+       
         hubTargetPublisher.accept(hubTarget);
         hubHeadingPublisher.accept(hubHeading);
     }

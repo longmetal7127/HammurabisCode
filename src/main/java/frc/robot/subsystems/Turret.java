@@ -22,6 +22,7 @@ import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.epilogue.Logged;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation3d;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.util.Units;
@@ -357,6 +358,15 @@ public class Turret {
     return new Pose3d(
         new Translation3d(0.1651, 0.1016, 0.3349752),
         new Rotation3d(0, 0, Math.toRadians(getAngleDegrees())));
+  }
+
+  /**
+   * Gets the turret's robot-relative translation in the field X/Y plane.
+   *
+   * @return Translation2d offset from the robot origin (meters)
+   */
+  public Translation2d getRobotRelativeTranslation() {
+    return new Translation2d(0.1651, 0.1016);
   }
 
 }

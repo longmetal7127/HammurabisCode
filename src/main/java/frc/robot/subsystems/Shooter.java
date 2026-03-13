@@ -4,8 +4,11 @@ import static edu.wpi.first.units.Units.Inches;
 import static edu.wpi.first.units.Units.MetersPerSecond;
 import static edu.wpi.first.units.Units.Radians;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
+import static edu.wpi.first.units.Units.Volts;
 
 import java.util.function.Supplier;
+
+import com.ctre.phoenix6.SignalLogger;
 
 import edu.wpi.first.epilogue.Logged;
 import edu.wpi.first.math.geometry.Pose2d;
@@ -14,12 +17,15 @@ import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.util.Units;
+import edu.wpi.first.networktables.DoubleSubscriber;
 import edu.wpi.first.units.measure.AngularVelocity;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
+import dev.doglog.DogLog;
 import frc.robot.FieldConstants;
 import frc.robot.subsystems.Flywheel.FlywheelSetpoint;
 import frc.robot.util.FuelSim;
@@ -35,11 +41,11 @@ public class Shooter extends SubsystemBase {
 
     // ── Sub-components (not subsystems) ──────────────────────────────────
     @Logged
-    private final Turret turret = new Turret();
+    public final Turret turret = new Turret();
     @Logged
-    private final Hood hood = new Hood();
+    public final Hood hood = new Hood();
     @Logged
-    private final Flywheel flywheel = new Flywheel();
+    public final Flywheel flywheel = new Flywheel();
 
     private final Supplier<Pose2d> poseSupplier;
     private final Supplier<ChassisSpeeds> fieldRelativeSpeedsSupplier;
@@ -47,19 +53,28 @@ public class Shooter extends SubsystemBase {
 
     private final ShootOnTheFlyCalculator sotfCalculator = buildSOTFCalculator();
 
+    private final DoubleSubscriber hoodAngleOffsetDeg = DogLog.tunable("Shooter/SOTF/HoodAngleOffsetDeg", 0.0,
+            edu.wpi.first.units.Units.Degrees);
+    private final DoubleSubscriber rpmOffset = DogLog.tunable("Shooter/SOTF/RpmOffset", 0.0,
+            edu.wpi.first.units.Units.RPM);
+
     // ── Fuel-sim shooting ────────────────────────────────────────────────
     /** Minimum interval between simulated fuel spawns (seconds). */
     private static final double FUEL_SPAWN_INTERVAL = 0.25;
-    /** Flywheel radius used to convert angular velocity to linear exit speed (meters). */
+    /**
+     * Flywheel radius used to convert angular velocity to linear exit speed
+     * (meters).
+     */
     private static final double FLYWHEEL_RADIUS = Units.inchesToMeters(2.0);
 
     private final Timer fuelSpawnTimer = new Timer();
 
-
     /**
-     * @param poseSupplier               Supplies the robot's current field pose
-     * @param fieldRelativeSpeedsSupplier Supplies the robot's field-relative chassis speeds
-     * @param fuelSim                     The FuelSim instance for spawning simulated projectiles
+     * @param poseSupplier                Supplies the robot's current field pose
+     * @param fieldRelativeSpeedsSupplier Supplies the robot's field-relative
+     *                                    chassis speeds
+     * @param fuelSim                     The FuelSim instance for spawning
+     *                                    simulated projectiles
      */
     public Shooter(
             Supplier<Pose2d> poseSupplier,
@@ -69,7 +84,6 @@ public class Shooter extends SubsystemBase {
         this.fieldRelativeSpeedsSupplier = fieldRelativeSpeedsSupplier;
         this.fuelSim = fuelSim;
     }
-
 
     @Override
     public void periodic() {
@@ -83,7 +97,6 @@ public class Shooter extends SubsystemBase {
         turret.simulationPeriodic();
         hood.simulationPeriodic();
     }
-
 
     /**
      * Returns true when the robot is inside its own alliance zone
@@ -141,16 +154,20 @@ public class Shooter extends SubsystemBase {
      * outside the alliance zone the target is the closest alliance zone corner.
      */
     private ShootOnTheFlyCalculator.ShooterCommand getCurrentSOTFCommand() {
-        Translation2d robot = poseSupplier.get().getTranslation();
+        Pose2d robotPose = poseSupplier.get();
+        Translation2d turretOffset = turret.getRobotRelativeTranslation().rotateBy(robotPose.getRotation());
+        Translation2d turretPosition = robotPose.getTranslation().plus(turretOffset);
         Translation2d target = isInAllianceZone()
                 ? getClosestHubCorner()
                 : getClosestAllianceZoneCorner();
         ChassisSpeeds speeds = fieldRelativeSpeedsSupplier.get();
-        return sotfCalculator.calculate(
-                robot,
+    ShootOnTheFlyCalculator.ShooterCommand cmd = sotfCalculator.calculate(
+                turretPosition,
                 new Translation2d(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond),
                 target,
                 0.0);
+    DogLog.log("Shooter/SOTF/EffectiveDistanceMeters", cmd.effectiveDistance());
+    return cmd;
     }
 
     /**
@@ -176,11 +193,14 @@ public class Shooter extends SubsystemBase {
      * {@link FuelSim#launchFuel} based on the current turret angle,
      * hood angle, and flywheel speed.
      *
-     * <p>Only spawns in simulation and rate-limited by {@link #FUEL_SPAWN_INTERVAL}.
+     * <p>
+     * Only spawns in simulation and rate-limited by {@link #FUEL_SPAWN_INTERVAL}.
      */
     private void trySpawnSimulatedFuel() {
-        if (!RobotBase.isSimulation()) return;
-        if (fuelSpawnTimer.get() < FUEL_SPAWN_INTERVAL) return;
+        if (!RobotBase.isSimulation())
+            return;
+        if (fuelSpawnTimer.get() < FUEL_SPAWN_INTERVAL)
+            return;
         fuelSpawnTimer.restart();
 
         double hoodPitchRad = Units.rotationsToRadians(hood.getPosition());
@@ -202,17 +222,22 @@ public class Shooter extends SubsystemBase {
     /**
      * Builds a command that continuously aims and shoots while held.
      *
-     * <p>The SOTF calculator is always used for turret angle, hood angle, and
+     * <p>
+     * The SOTF calculator is always used for turret angle, hood angle, and
      * flywheel speed. In the alliance zone the target is the closest hub corner;
      * outside the alliance zone it is the closest alliance zone corner.
      *
-     * @param spindexerFeedCommand Command to feed the spindexer (composed externally)
+     * @param spindexerFeedCommand Command to feed the spindexer (composed
+     *                             externally)
      * @param indexerFeedCommand   Command to feed the indexer (composed externally)
      * @return The shoot command (requires this Shooter subsystem)
      */
     public Command buildShootCommand(Command spindexerFeedCommand, Command indexerFeedCommand) {
         return run(() -> {
             var cmd = getCurrentSOTFCommand();
+
+            double rpm = cmd.rpm() + rpmOffset.get();
+            double hoodAngleDeg = cmd.hoodAngle() + hoodAngleOffsetDeg.get();
 
             // Turret: continuously track the SOTF turret angle (robot-relative)
             double turretAngleDeg = cmd.turretAngle()
@@ -221,11 +246,11 @@ public class Shooter extends SubsystemBase {
             turret.setAngle(turretAngleDeg);
 
             // Hood: follow the SOTF hood angle
-            hood.setAngle(cmd.hoodAngle());
+            hood.setAngle(hoodAngleDeg);
 
             // Flywheel: set target speed
             if (isInAllianceZone()) {
-                flywheel.setTarget(cmd.rpm());
+                flywheel.setTarget(rpm);
             } else {
                 flywheel.setTarget(FlywheelSetpoint.Far.leaderMotorTarget.in(RotationsPerSecond));
             }
@@ -239,8 +264,35 @@ public class Shooter extends SubsystemBase {
                                         spindexerFeedCommand,
                                         indexerFeedCommand,
                                         // Periodically spawn simulated fuel while feeding
-                                        Commands.run(this::trySpawnSimulatedFuel)))
-        ).withName("Shoot");
+                                        Commands.run(this::trySpawnSimulatedFuel))))
+                .withName("Shoot");
+    }
+    
+    /**
+     * Build a tuning command: while held, set hood and flywheel to the
+     * DogLog tunable values (treated as absolute), aim turret using SOTF
+     * turret angle, and log the effective distance for LUT tuning.
+     */
+    public Command buildTuningCommand() {
+        return run(() -> {
+            var cmd = getCurrentSOTFCommand();
+
+            // Treat DogLog tunables as absolute setpoints while tuning
+            double rpm = rpmOffset.get();
+            double hoodAngleDeg = hoodAngleOffsetDeg.get();
+
+            // Turret: continuously track the SOTF turret angle (robot-relative)
+            double turretAngleDeg = cmd.turretAngle()
+                    .minus(poseSupplier.get().getRotation())
+                    .getDegrees();
+            turret.setAngle(turretAngleDeg);
+
+            // Hood: set directly from tunable
+            hood.setAngle(hoodAngleDeg);
+
+            // Flywheel: set directly from tunable
+            flywheel.setTarget(rpm);
+        }).withName("SOTF-Tune");
     }
 
     /**
@@ -332,4 +384,25 @@ public class Shooter extends SubsystemBase {
     public boolean isFlywheelNearTarget(AngularVelocity threshold) {
         return flywheel.isNearTarget(threshold);
     }
+
+    public final SysIdRoutine m_sysIdRoutine = new SysIdRoutine(
+            new SysIdRoutine.Config(
+                    null, // Use default ramp rate (1 V/s)
+                    Volts.of(4), // Reduce dynamic step voltage to 4 to prevent brownout
+                    null, // Use default timeout (10 s)
+                          // Log state with Phoenix SignalLogger class
+                    (state) -> SignalLogger.writeString("state", state.toString())),
+            new SysIdRoutine.Mechanism(
+                    (volts) -> flywheel.runSysid(volts),
+                    null,
+                    this));
+
+    public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
+        return m_sysIdRoutine.quasistatic(direction);
+    }
+
+    public Command sysIdDynamic(SysIdRoutine.Direction direction) {
+        return m_sysIdRoutine.dynamic(direction);
+    }
+
 }

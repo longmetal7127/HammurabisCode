@@ -5,6 +5,7 @@ import static edu.wpi.first.units.Units.*;
 
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.CANBus;
+import com.ctre.phoenix6.SignalLogger;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.Utils;
 import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
@@ -13,6 +14,7 @@ import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.CoastOut;
 import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.controls.VelocityVoltage;
+import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.MotorAlignmentValue;
@@ -33,6 +35,7 @@ import edu.wpi.first.wpilibj.simulation.DCMotorSim;
 import edu.wpi.first.wpilibj.smartdashboard.Mechanism2d;
 import edu.wpi.first.wpilibj.smartdashboard.MechanismLigament2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
 /**
  * Flywheel sub-component using dual TalonFX Kraken motors.
@@ -57,7 +60,7 @@ public class Flywheel {
 
     private static final int kNumConfigAttempts = 2;
 
-    private static final double kGearRatio = 1;
+    private static final double kGearRatio = 1 / 1.5;
 
     /* leader and follower motors */
     private final CANBus kCANBus = new CANBus("main_canivore");
@@ -110,14 +113,14 @@ public class Flywheel {
                             .withInverted(InvertedValue.Clockwise_Positive))
             .withFeedback(
                     motorTalonFXInitialConfigs.Feedback.clone()
-                            .withSensorToMechanismRatio(1))
+                            .withSensorToMechanismRatio(1 / 1.5))
             .withSlot0(
                     motorTalonFXInitialConfigs.Slot0.clone()
-                            .withKP(0.19188)
+                            .withKP(0.1368)
                             .withKI(0)
                             .withKD(0)
-                            .withKS(0.24746)
-                            .withKV(0.12538)
+                            .withKS(0.38449)
+                            .withKV(0.086321)
                             .withKA(0));
 
     public Flywheel() {
@@ -233,4 +236,10 @@ public class Flywheel {
         simNotifier.startPeriodic(kSimLoopPeriod);
     }
 
+    private final VoltageOut m_voltReq = new VoltageOut(0.0);
+
+    public void runSysid(Voltage volts) {
+        leaderMotor.setControl(m_voltReq.withOutput(volts.in(Volts)));
+        followerMotor.setControl(followerMotorSetpointRequest);
+    }
 }

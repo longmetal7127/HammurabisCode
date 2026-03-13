@@ -92,10 +92,10 @@ public class Robot extends TimedRobot {
                         () -> drivetrain.getState().Pose,
                         new CameraConfig("back-left", new Transform3d(
                                         new Translation3d(Inches.of(-12.895), Inches.of(10.918), Inches.of(9.224)),
-                                        new Rotation3d(0, Math.toRadians(-125), Math.toRadians(150)))),
+                                        new Rotation3d(0, Math.toRadians(-55), Math.toRadians(150)))),
                         new CameraConfig("back-right", new Transform3d(
                                         new Translation3d(Inches.of(-12.895), Inches.of(-10.918), Inches.of(9.224)),
-                                        new Rotation3d(0, Math.toRadians(-125), Math.toRadians(-150)))),
+                                        new Rotation3d(0, Math.toRadians(-55), Math.toRadians(-150)))),
                         new CameraConfig("left-side", new Transform3d(
                                         new Translation3d(Inches.of(1.105), Inches.of(12.257), Inches.of(8.235)),
                                         new Rotation3d(0, Math.toRadians(-35), Math.toRadians(90)))),

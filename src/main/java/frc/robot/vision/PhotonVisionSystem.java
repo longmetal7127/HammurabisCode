@@ -27,6 +27,7 @@ import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.networktables.StructArrayPublisher;
 import edu.wpi.first.networktables.StructPublisher;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
@@ -120,6 +121,10 @@ public class PhotonVisionSystem {
     private final NetworkTable cameraTable = NetworkTableInstance.getDefault().getTable("CameraDetails");
     private final StructPublisher<Pose3d> hubTargetPublisher = cameraTable.getStructTopic("HubTarget", Pose3d.struct).publish();
     private final StructPublisher<Rotation2d> hubHeadingPublisher = cameraTable.getStructTopic("HubHeading", Rotation2d.struct).publish();
+    private final StructArrayPublisher<Pose3d> cameraOffsetPublisher = cameraTable
+        .getStructArrayTopic("Offsets", Pose3d.struct)
+        .publish();
+    private final Pose3d[] cameraOffsetPoses;
 
     /**
      * Create a multi-camera vision system.
@@ -133,9 +138,13 @@ public class PhotonVisionSystem {
         this.currentRobotPose = currentRobotPose;
 
         cameras = new CameraState[configs.length];
+        cameraOffsetPoses = new Pose3d[configs.length];
         for (int i = 0; i < configs.length; i++) {
             cameras[i] = new CameraState(configs[i], TagLayout);
+            cameraOffsetPoses[i] = new Pose3d(currentRobotPose.get()).transformBy(configs[i].robotToCamera());
         }
+
+        cameraOffsetPublisher.set(cameraOffsetPoses);
 
         // ----- Simulation
         if (Robot.isSimulation() ) {
@@ -183,6 +192,7 @@ public class PhotonVisionSystem {
        
         hubTargetPublisher.accept(hubTarget);
         hubHeadingPublisher.accept(hubHeading);
+        cameraOffsetPublisher.set(cameraOffsetPoses);
     }
 
     public void simPeriodic(Pose2d simPose) {

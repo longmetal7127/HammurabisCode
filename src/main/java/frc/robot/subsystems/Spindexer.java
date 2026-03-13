@@ -34,7 +34,7 @@ import java.util.function.Supplier;
 public class Spindexer extends SubsystemBase {
 
   public enum SpindexerSetpoint {
-    Spin(3000),
+    Spin(6000),
     Stop(0);
 
     public final double velocityRPM;

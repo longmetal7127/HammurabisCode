@@ -24,6 +24,7 @@ import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.simulation.RoboRioSim;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.util.TiltedElevatorSim;
 
@@ -118,7 +119,7 @@ public class Lintake extends SubsystemBase {
     sparkWheelPidController = intakeWheelMotor.getClosedLoopController(); 
     SparkFlexConfig wheelConfig = new SparkFlexConfig();
     wheelConfig.idleMode(IdleMode.kBrake);
-    wheelConfig.smartCurrentLimit(20);
+    wheelConfig.smartCurrentLimit(40);
     wheelConfig.closedLoop
         .feedbackSensor(FeedbackSensor.kPrimaryEncoder)
         .pid(0.1, 0, 0, ClosedLoopSlot.kSlot0)
@@ -326,5 +327,17 @@ public class Lintake extends SubsystemBase {
 
   public boolean getIntakeEnabled() {
     return MathUtil.isNear(getPosition(), maxHeight, 0.02);
+  }
+
+  public Command zeroingRoutine() {
+    return run(() -> {
+      motor.set(-0.25);
+      setVelocity(-.1);
+    }).until(() -> (getCurrent() >=35)
+    ).andThen(() -> {
+      encoder.setPosition(0);
+      motor.set(0);
+      setVelocity(0);
+    });
   }
 }

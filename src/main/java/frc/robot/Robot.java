@@ -77,6 +77,7 @@ public class Robot extends TimedRobot {
         private final Telemetry logger = new Telemetry(MaxSpeed);
 
         private final CommandGamesirController joystick = new frc.robot.util.CommandGamesirController(0);
+        private final CommandGamesirController operatorJoystick = new frc.robot.util.CommandGamesirController(1);
 
         public final CommandSwerveDrivetrain drivetrain = TunerConstants.createDrivetrain();
 
@@ -210,7 +211,7 @@ public class Robot extends TimedRobot {
                 joystick.back().and(joystick.x()).whileTrue(drivetrain.sysIdDynamic(Direction.kReverse));
                 joystick.start().and(joystick.y()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kForward));
                 joystick.start().and(joystick.x()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kReverse));
-                joystick.leftStick().onTrue(drivetrain.runOnce(() -> drivetrain.seedFieldCentric()));
+                joystick.povDown().onTrue(drivetrain.runOnce(() -> drivetrain.seedFieldCentric()));
                 /*
                  * RobotModeTriggers.disabled().whileTrue(
                  * drivetrain.applyRequest(() -> idle).ignoringDisable(true));
@@ -218,12 +219,22 @@ public class Robot extends TimedRobot {
 
                 // --- Shoot (left trigger) ---
                 // While held: aim turret + hood, spin flywheel, feed indexer/spindexer
+                joystick.rightTrigger().whileTrue(
+                                shooter.buildShootCommand(
+                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index),false))
+                                .onFalse(
+                                                shooter.setHoodAngleCommand(0)
+                                );
+                //turret autoaim stuff
+                /* 
                 joystick.leftTrigger().whileTrue(
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                                indexer.setTargetTemporary(IndexerSetpoint.Index)));
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index)),true);
+                */
 
-                joystick.rightTrigger().whileTrue(
+                joystick.leftTrigger().whileTrue(
                                 Commands.sequence(
                                                 lintake.setHeightCommand(lintake.getMaxHeightMeters()),
                                                 lintake.setVelocityCommand(0.6)))
@@ -242,11 +253,15 @@ public class Robot extends TimedRobot {
                                 Commands.runOnce(() -> intakeMode = IntakeMode.B));
 
                 // --- Tuning: while A is held, use DogLog tunables as absolute setpoints ---
-                joystick.a().whileTrue(
-                                shooter.buildTuningCommand());
+                //joystick.a().whileTrue(
+                //                shooter.buildTuningCommand());
 
                 drivetrain.registerTelemetry(logger::telemeterize);
 
+                joystick.povUp().onTrue(lintake.zeroingRoutine());
+                //joystick.x().onTrue(drivetrain.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
+                //joystick.y().onTrue(drivetrain.sysIdDynamic(SysIdRoutine.Direction.kForward));
+                
         }
 
         public void consumePhotonVisionMeasurement(LoggableRobotPose pose) {
@@ -257,16 +272,35 @@ public class Robot extends TimedRobot {
                 // Simple drive forward auton
                 final var idle = new SwerveRequest.Idle();
                 return Commands.sequence(
-                                // Reset our field centric heading to match the robot
-                                // facing away from our alliance station wall (0 deg).
+                                Commands.waitSeconds(0.5),
+                                //shoot as expected
+                                shooter.buildShootCommand(
+                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index),false).withTimeout(5),
+                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
+                                Commands.waitSeconds(1.5),
+                                lintake.setVelocityCommand(-0.1),
+                                Commands.waitSeconds(1.5),
+                                lintake.stopCommand(),
+                                shooter.buildShootCommand(
+                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index),false).withTimeout(5),
+                                /*
                                 drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero)),
                                 // Then slowly drive forward (away from us) for 5 seconds.
                                 drivetrain.applyRequest(() -> drive.withVelocityX(0.5)
                                                 .withVelocityY(0)
                                                 .withRotationalRate(0))
                                                 .withTimeout(5.0),
+                                */
+
+                                // Reset our field centric heading to match the robot
+                                // facing away from our alliance station wall (0 deg).
+                                shooter.setHoodAngleCommand(0),
+                                drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero)),
                                 // Finally idle for the rest of auton
                                 drivetrain.applyRequest(() -> idle));
+                                
         }
 
         @Override
@@ -297,7 +331,7 @@ public class Robot extends TimedRobot {
         @Override
         public void autonomousInit() {
                 m_autonomousCommand = getAutonomousCommand();
-
+                
                 if (m_autonomousCommand != null) {
                         CommandScheduler.getInstance().schedule(m_autonomousCommand);
                 }

@@ -30,7 +30,7 @@ import java.util.function.Supplier;
 public class Indexer extends SubsystemBase {
 
   public enum IndexerSetpoint {
-    Index(3000),
+    Index(6000),
     Stop(0);
 
     public final double velocityRPM;

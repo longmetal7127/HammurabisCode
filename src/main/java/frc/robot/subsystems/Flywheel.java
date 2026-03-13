@@ -48,6 +48,7 @@ public class Flywheel {
         Intake(RotationsPerSecond.of(60)),
         Outtake(RotationsPerSecond.of(-60)),
         Near(RotationsPerSecond.of(50)),
+        AgainstHub(RotationsPerSecond.of(28)),
         Far(RotationsPerSecond.of(60));
 
         /** The velocity target of the setpoint. */

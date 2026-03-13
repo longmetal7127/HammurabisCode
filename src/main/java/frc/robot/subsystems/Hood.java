@@ -1,5 +1,6 @@
 package frc.robot.subsystems;
 
+import static edu.wpi.first.units.Units.Degree;
 import static edu.wpi.first.units.Units.Radians;
 import static edu.wpi.first.units.Units.RadiansPerSecond;
 import static edu.wpi.first.units.Units.Rotations;
@@ -260,5 +261,9 @@ public class Hood {
                 0.1016,
                 0.504698,
                 new Rotation3d(0, -0.659734457 + angleRadians, 0).plus(turretRotation));
+    }
+
+    public boolean isNearTarget(Angle threshold) {
+        return motor.getPosition().isNear(positionRequest.getPositionMeasure(),threshold);
     }
 }

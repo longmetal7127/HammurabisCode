@@ -1,15 +1,12 @@
 package frc.robot.subsystems;
 
-import static edu.wpi.first.units.Units.Inches;
-import static edu.wpi.first.units.Units.MetersPerSecond;
-import static edu.wpi.first.units.Units.Radians;
-import static edu.wpi.first.units.Units.RotationsPerSecond;
-import static edu.wpi.first.units.Units.Volts;
+import static edu.wpi.first.units.Units.*;
 
 import java.util.function.Supplier;
 
 import com.ctre.phoenix6.SignalLogger;
 
+import dev.doglog.DogLog;
 import edu.wpi.first.epilogue.Logged;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
@@ -18,6 +15,7 @@ import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.networktables.DoubleSubscriber;
+import edu.wpi.first.units.measure.Angle;
 import edu.wpi.first.units.measure.AngularVelocity;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.Timer;
@@ -25,7 +23,6 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
-import dev.doglog.DogLog;
 import frc.robot.FieldConstants;
 import frc.robot.subsystems.Flywheel.FlywheelSetpoint;
 import frc.robot.util.FuelSim;
@@ -232,31 +229,44 @@ public class Shooter extends SubsystemBase {
      * @param indexerFeedCommand   Command to feed the indexer (composed externally)
      * @return The shoot command (requires this Shooter subsystem)
      */
-    public Command buildShootCommand(Command spindexerFeedCommand, Command indexerFeedCommand) {
+    public Command buildShootCommand(Command spindexerFeedCommand, Command indexerFeedCommand, boolean autoAimTurret) {
         return run(() -> {
             var cmd = getCurrentSOTFCommand();
 
             double rpm = cmd.rpm() + rpmOffset.get();
-            double hoodAngleDeg = cmd.hoodAngle() + hoodAngleOffsetDeg.get();
+            double hoodAngleDeg = 5.5;
+            double turretAngleDeg = -90;
 
-            // Turret: continuously track the SOTF turret angle (robot-relative)
-            double turretAngleDeg = cmd.turretAngle()
-                    .minus(poseSupplier.get().getRotation())
-                    .getDegrees();
-            turret.setAngle(turretAngleDeg);
+            if(autoAimTurret) {
+                hoodAngleDeg = cmd.hoodAngle() + hoodAngleOffsetDeg.get();
+                // Turret: continuously track the SOTF turret angle (robot-relative)
+                turretAngleDeg = cmd.turretAngle()
+                        .minus(poseSupplier.get().getRotation())
+                        .getDegrees();
+            }
 
-            // Hood: follow the SOTF hood angle
             hood.setAngle(hoodAngleDeg);
-
+            turret.setAngle(turretAngleDeg);
+            
             // Flywheel: set target speed
-            if (isInAllianceZone()) {
+            if(autoAimTurret) {
                 flywheel.setTarget(rpm);
             } else {
-                flywheel.setTarget(FlywheelSetpoint.Far.leaderMotorTarget.in(RotationsPerSecond));
+                flywheel.setTarget(FlywheelSetpoint.AgainstHub.leaderMotorTarget.in(RotationsPerSecond));
             }
+            /*
+            if (isInAllianceZone()) {
+                if(autoAimTurret) {
+                    flywheel.setTarget(rpm);
+                } else {
+                    flywheel.setTarget(FlywheelSetpoint.AgainstHub.leaderMotorTarget.in(RotationsPerSecond));
+                }
+            } else {
+                flywheel.setTarget(FlywheelSetpoint.Far.leaderMotorTarget.in(RotationsPerSecond));
+            } */
         }).alongWith(
                 // Spindexer + indexer: wait for flywheel to reach speed, then feed
-                Commands.waitUntil(() -> flywheel.isNearTarget(RotationsPerSecond.of(5)))
+                Commands.waitUntil(() -> (flywheel.isNearTarget(RotationsPerSecond.of(1))))
                         .andThen(
                                 // Reset spawn timer so the first fuel fires immediately
                                 Commands.runOnce(() -> fuelSpawnTimer.restart()),

@@ -1,0 +1,84 @@
+{
+ "name":"test_auto",
+ "version":2,
+ "type":"Swerve",
+ "variables":{
+  "expressions":{},
+  "poses":{}
+ },
+ "config":{
+  "frontLeft":{
+   "x":{
+    "exp":"12.5 in",
+    "val":0.3175
+   },
+   "y":{
+    "exp":"10.75 in",
+    "val":0.27305
+   }
+  },
+  "backLeft":{
+   "x":{
+    "exp":"-12.5 in",
+    "val":-0.3175
+   },
+   "y":{
+    "exp":"10.75 in",
+    "val":0.27305
+   }
+  },
+  "mass":{
+   "exp":"140 lbs",
+   "val":63.502931800000006
+  },
+  "inertia":{
+   "exp":"4.919515 kg m ^ 2",
+   "val":4.919515
+  },
+  "gearing":{
+   "exp":"4.71",
+   "val":4.71
+  },
+  "radius":{
+   "exp":"3 in",
+   "val":0.07619999999999999
+  },
+  "vmax":{
+   "exp":"6000 RPM",
+   "val":628.3185307179587
+  },
+  "tmax":{
+   "exp":"1.2 N * m",
+   "val":1.2
+  },
+  "cof":{
+   "exp":"1.5",
+   "val":1.5
+  },
+  "bumper":{
+   "front":{
+    "exp":"17.625 in",
+    "val":0.447675
+   },
+   "side":{
+    "exp":"15.875 in",
+    "val":0.403225
+   },
+   "back":{
+    "exp":"17.625 in",
+    "val":0.447675
+   }
+  },
+  "differentialTrackWidth":{
+   "exp":"22 in",
+   "val":0.5588
+  }
+ },
+ "generationFeatures":[],
+ "codegen":{
+  "root":"Users/grahamsh/GitHub/HammurabisCode",
+  "genVars":true,
+  "genTrajData":true,
+  "useChoreoLib":true
+ }
+}

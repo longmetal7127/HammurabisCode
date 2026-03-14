@@ -35,7 +35,7 @@ import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import frc.robot.Robot;
 
 public class PhotonVisionSystem {
-    final AprilTagFieldLayout TagLayout = AprilTagFieldLayout.loadField(AprilTagFields.kDefaultField);
+    final AprilTagFieldLayout TagLayout = AprilTagFieldLayout.loadField(AprilTagFields.k2026RebuiltAndymark);
     /* IDs 3,4 and 19,20 are on the side of the hub that we can't shoot from, so don't include them */
     private final int[] RedHubApriltagIds = new int[]{
         2, /* 3, 4, */ 5, 8, 9, 10, 11

@@ -366,7 +366,7 @@ public class Turret {
    * @return Translation2d offset from the robot origin (meters)
    */
   public Translation2d getRobotRelativeTranslation() {
-    return new Translation2d(0.1651, 0.1016);
+    return new Translation2d(-0.1651, -0.1016);
   }
 
 }

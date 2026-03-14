@@ -26,6 +26,7 @@ import edu.wpi.first.wpilibj.simulation.RoboRioSim;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.subsystems.Indexer.IndexerSetpoint;
 import frc.robot.util.TiltedElevatorSim;
 
 /**
@@ -339,5 +340,11 @@ public class Lintake extends SubsystemBase {
       motor.set(0);
       setVelocity(0);
     });
+  }
+
+  public Command runReverse() {
+      return Commands.runOnce(() -> {
+          setVelocity(-.1);
+      });
   }
 }

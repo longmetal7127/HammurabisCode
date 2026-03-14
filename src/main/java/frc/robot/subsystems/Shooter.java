@@ -44,6 +44,15 @@ public class Shooter extends SubsystemBase {
     @Logged
     public final Flywheel flywheel = new Flywheel();
 
+    public enum ShooterMode {
+            /** Stop and Shoot Against Hub */
+            AgainstHub,
+            /** Pass across the field */
+            Pass,
+            /** Autoaim turret */
+            Autoaim
+    }
+
     private final Supplier<Pose2d> poseSupplier;
     private final Supplier<ChassisSpeeds> fieldRelativeSpeedsSupplier;
     private final FuelSim fuelSim;
@@ -229,41 +238,45 @@ public class Shooter extends SubsystemBase {
      * @param indexerFeedCommand   Command to feed the indexer (composed externally)
      * @return The shoot command (requires this Shooter subsystem)
      */
-    public Command buildShootCommand(Command spindexerFeedCommand, Command indexerFeedCommand, boolean autoAimTurret) {
+    public Command buildShootCommand(Command spindexerFeedCommand, Command indexerFeedCommand, ShooterMode shooterMode) {
         return run(() -> {
             var cmd = getCurrentSOTFCommand();
 
-            double rpm = cmd.rpm() + rpmOffset.get();
-            double hoodAngleDeg = 5.5;
-            double turretAngleDeg = -90;
+            double rpm = 0;
+            double hoodAngleDeg = 0;
+            double turretAngleDeg = 0;
+            switch(shooterMode) {
+                case AgainstHub:
+                    hoodAngleDeg = 5.5;
+                    turretAngleDeg = -90;
+                    rpm = FlywheelSetpoint.AgainstHub.leaderMotorTarget.in(RotationsPerSecond);
+                    break;
+                case Pass:
+                    hoodAngleDeg = 10;
+                    turretAngleDeg = -90;
+                    rpm = FlywheelSetpoint.Pass.leaderMotorTarget.in(RotationsPerSecond);
+                    break;
+                case Autoaim: {
+                    hoodAngleDeg = cmd.hoodAngle() + hoodAngleOffsetDeg.get();
+                    // Turret: continuously track the SOTF turret angle (robot-relative)
+                    turretAngleDeg = cmd.turretAngle()
+                            .minus(poseSupplier.get().getRotation())
+                            .getDegrees();
+                    rpm = cmd.rpm() + rpmOffset.get();
 
-            if(autoAimTurret) {
-                hoodAngleDeg = cmd.hoodAngle() + hoodAngleOffsetDeg.get();
-                // Turret: continuously track the SOTF turret angle (robot-relative)
-                turretAngleDeg = cmd.turretAngle()
-                        .minus(poseSupplier.get().getRotation())
-                        .getDegrees();
+                    // Flywheel: set target speed
+                    /*
+                    if (isInAllianceZone()) {
+                        flywheel.setTarget(rpm);
+                    } else {
+                        flywheel.setTarget(FlywheelSetpoint.Far.leaderMotorTarget.in(RotationsPerSecond));
+                    } */
+                }
             }
 
             hood.setAngle(hoodAngleDeg);
             turret.setAngle(turretAngleDeg);
-            
-            // Flywheel: set target speed
-            if(autoAimTurret) {
-                flywheel.setTarget(rpm);
-            } else {
-                flywheel.setTarget(FlywheelSetpoint.AgainstHub.leaderMotorTarget.in(RotationsPerSecond));
-            }
-            /*
-            if (isInAllianceZone()) {
-                if(autoAimTurret) {
-                    flywheel.setTarget(rpm);
-                } else {
-                    flywheel.setTarget(FlywheelSetpoint.AgainstHub.leaderMotorTarget.in(RotationsPerSecond));
-                }
-            } else {
-                flywheel.setTarget(FlywheelSetpoint.Far.leaderMotorTarget.in(RotationsPerSecond));
-            } */
+            flywheel.setTarget(rpm);
         }).alongWith(
                 // Spindexer + indexer: wait for flywheel to reach speed, then feed
                 Commands.waitUntil(() -> (flywheel.isNearTarget(RotationsPerSecond.of(1))))
@@ -414,5 +427,20 @@ public class Shooter extends SubsystemBase {
     public Command sysIdDynamic(SysIdRoutine.Direction direction) {
         return m_sysIdRoutine.dynamic(direction);
     }
+
+    public Command runReverse() {
+        return Commands.runOnce(() -> {
+            flywheel.setTarget(FlywheelSetpoint.Outtake.leaderMotorTarget.in(RotationsPerSecond));
+        });
+    }
+
+    /**
+   * Creates a command to stop the intake.
+   * 
+   * @return A command that stops the intake
+   */
+  public Command resetFlywheel() {
+    return runOnce(() -> flywheel.setTarget(FlywheelSetpoint.AgainstHub.leaderMotorTarget.in(RotationsPerSecond)));
+  }
 
 }

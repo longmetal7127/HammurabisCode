@@ -39,8 +39,10 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
+import frc.robot.subsystems.Flywheel;
 import frc.robot.subsystems.Indexer;
 import frc.robot.subsystems.Indexer.IndexerSetpoint;
+import frc.robot.subsystems.Shooter.ShooterMode;
 import frc.robot.subsystems.Lintake;
 import frc.robot.subsystems.Shooter;
 import frc.robot.subsystems.Spindexer;
@@ -222,7 +224,6 @@ public class Robot extends TimedRobot {
                 joystick.back().and(joystick.x()).whileTrue(drivetrain.sysIdDynamic(Direction.kReverse));
                 joystick.start().and(joystick.y()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kForward));
                 joystick.start().and(joystick.x()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kReverse));
-                joystick.povDown().onTrue(drivetrain.runOnce(() -> drivetrain.seedFieldCentric()));
                 /*
                  * RobotModeTriggers.disabled().whileTrue(
                  * drivetrain.applyRequest(() -> idle).ignoringDisable(true));
@@ -233,14 +234,9 @@ public class Robot extends TimedRobot {
                 joystick.rightTrigger().whileTrue(
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                                indexer.setTargetTemporary(IndexerSetpoint.Index), false))
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.AgainstHub))
                                 .onFalse(
                                                 shooter.setHoodAngleCommand(0));
-                // turret autoaiadd m stuff
-                joystick.x().whileTrue(
-                                shooter.buildShootCommand(
-                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                                indexer.setTargetTemporary(IndexerSetpoint.Index), true));
 
                 joystick.leftTrigger().whileTrue(
                                 Commands.sequence(
@@ -264,11 +260,27 @@ public class Robot extends TimedRobot {
                 // joystick.a().whileTrue(
                 // shooter.buildTuningCommand());
 
-                drivetrain.registerTelemetry(logger::telemeterize);
+                // turret autoaiadd m stuff
+                joystick.x().whileTrue(
+                                shooter.buildShootCommand(
+                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim));
+                
+                joystick.y().whileTrue(
+                                shooter.buildShootCommand(
+                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Pass));
 
                 joystick.povUp().onTrue(lintake.zeroingRoutine());
+                joystick.povRight().whileTrue(spindexer.runReverse().alongWith(indexer.runReverse()));
+                joystick.povLeft().whileTrue(shooter.runReverse().alongWith(lintake.runReverse())).onFalse(shooter.resetFlywheel().alongWith(lintake.stopCommand()));
+                joystick.povDown().onTrue(drivetrain.runOnce(() -> drivetrain.seedFieldCentric()));
+                
+                //sysid
                 // joystick.x().onTrue(drivetrain.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
                 // joystick.y().onTrue(drivetrain.sysIdDynamic(SysIdRoutine.Direction.kForward));
+
+                drivetrain.registerTelemetry(logger::telemeterize);
 
         }
 
@@ -284,7 +296,7 @@ public class Robot extends TimedRobot {
                                 // shoot as expected
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                                indexer.setTargetTemporary(IndexerSetpoint.Index), false)
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.AgainstHub)
                                                 .withTimeout(5),
                                 lintake.setHeightCommand(lintake.getMaxHeightMeters()),
                                 Commands.waitSeconds(1.5),
@@ -293,7 +305,7 @@ public class Robot extends TimedRobot {
                                 lintake.stopCommand(),
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                                indexer.setTargetTemporary(IndexerSetpoint.Index), false)
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.AgainstHub)
                                                 .withTimeout(5),
                                 /*
                                  * drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero)),

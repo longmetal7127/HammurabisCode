@@ -18,8 +18,11 @@ import edu.wpi.first.math.system.plant.LinearSystemId;
 import edu.wpi.first.wpilibj.simulation.FlywheelSim;
 import edu.wpi.first.wpilibj.simulation.RoboRioSim;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.subsystems.Spindexer.SpindexerSetpoint;
 
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /**
@@ -31,7 +34,8 @@ public class Indexer extends SubsystemBase {
 
   public enum IndexerSetpoint {
     Index(6000),
-    Stop(0);
+    Stop(0),
+    SpinReverse(-3000);
 
     public final double velocityRPM;
 
@@ -235,5 +239,11 @@ public class Indexer extends SubsystemBase {
     // Update the flywheel simulation with motor voltage
     indexerSim.setInputVoltage(motorSim.getAppliedOutput() * RoboRioSim.getVInVoltage());
     indexerSim.update(0.02);
+  }
+
+  public Command runReverse() {
+      return Commands.runOnce(() -> {
+          setTargetTemporary(IndexerSetpoint.SpinReverse);
+      });
   }
 }

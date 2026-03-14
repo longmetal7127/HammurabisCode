@@ -35,6 +35,9 @@ import edu.wpi.first.wpilibj.simulation.DCMotorSim;
 import edu.wpi.first.wpilibj.smartdashboard.Mechanism2d;
 import edu.wpi.first.wpilibj.smartdashboard.MechanismLigament2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
+import edu.wpi.first.wpilibj2.command.RunCommand;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
 /**
@@ -46,9 +49,10 @@ public class Flywheel {
     /** Velocity setpoints for the flywheel. */
     public enum FlywheelSetpoint {
         Intake(RotationsPerSecond.of(60)),
-        Outtake(RotationsPerSecond.of(-60)),
+        Outtake(RotationsPerSecond.of(-10)),
         Near(RotationsPerSecond.of(50)),
         AgainstHub(RotationsPerSecond.of(28)),
+        Pass(RotationsPerSecond.of(40)),
         Far(RotationsPerSecond.of(60));
 
         /** The velocity target of the setpoint. */

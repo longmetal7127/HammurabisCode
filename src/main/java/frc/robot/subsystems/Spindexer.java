@@ -19,8 +19,10 @@ import edu.wpi.first.math.system.plant.LinearSystemId;
 import edu.wpi.first.wpilibj.simulation.FlywheelSim;
 import edu.wpi.first.wpilibj.simulation.RoboRioSim;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
+import frc.robot.subsystems.Flywheel.FlywheelSetpoint;
 
 import static edu.wpi.first.units.Units.Volts;
 
@@ -35,6 +37,7 @@ public class Spindexer extends SubsystemBase {
 
   public enum SpindexerSetpoint {
     Spin(6000),
+    SpinReverse(-3000),
     Stop(0);
 
     public final double velocityRPM;
@@ -275,5 +278,11 @@ public class Spindexer extends SubsystemBase {
 
   public Command sysIdDynamic(SysIdRoutine.Direction direction) {
     return m_sysIdRoutine.dynamic(direction);
+  }
+
+  public Command runReverse() {
+      return Commands.runOnce(() -> {
+          setTargetTemporary(SpindexerSetpoint.SpinReverse);
+      });
   }
 }

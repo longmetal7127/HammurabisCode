@@ -51,7 +51,7 @@ public class Flywheel {
         Intake(RotationsPerSecond.of(60)),
         Outtake(RotationsPerSecond.of(-10)),
         Near(RotationsPerSecond.of(50)),
-        AgainstHub(RotationsPerSecond.of(28)),
+        AgainstHub(RotationsPerSecond.of(29)),
         Pass(RotationsPerSecond.of(40)),
         Far(RotationsPerSecond.of(60));
 

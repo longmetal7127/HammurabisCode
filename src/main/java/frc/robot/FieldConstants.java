@@ -38,7 +38,7 @@ public class FieldConstants {
 
   /** Far corners of the alliance zone (at the driver station wall, field edges). */
   public static class AllianceZoneCorners {
-    private static final double allianceZoneOffset = Units.inchesToMeters(10);
+    private static final double allianceZoneOffset = Units.inchesToMeters(24);
 
     // Blue alliance reference frame
     public static final Translation2d blueLeft =

@@ -62,6 +62,7 @@ public class Shooter extends SubsystemBase {
     private final FuelSim fuelSim;
 
     private final ShootOnTheFlyCalculator sotfCalculator = buildSOTFCalculator();
+    private final ShootOnTheFlyCalculator passingSotfCalculator = buildPassingSOTFCalculator();
 
     private final DoubleSubscriber hoodAngleOffsetDeg = DogLog.tunable("Shooter/SOTF/HoodAngleOffsetDeg", 0.0,
             edu.wpi.first.units.Units.Degrees);
@@ -114,15 +115,13 @@ public class Shooter extends SubsystemBase {
      */
     public boolean isInAllianceZone() {
         double robotX = poseSupplier.get().getX();
-        var blue = DriverStation.getAlliance().get() == Alliance.Blue; 
+        var blue = DriverStation.getAlliance().get() == Alliance.Blue;
         if (blue) {
-        return true;//robotX < FieldConstants.LinesVertical.allianceZone;
+            return robotX < FieldConstants.LinesVertical.allianceZone;
         } else {
-            return true ;//robotX > FieldConstants.LinesVertical.oppAllianceZone;
+            return robotX > FieldConstants.LinesVertical.oppAllianceZone;
         }
     }
-
-
 
     /**
      * Finds the nearest alliance-zone corner to the robot's current position.
@@ -130,9 +129,10 @@ public class Shooter extends SubsystemBase {
      */
     private Translation2d getClosestAllianceZoneCorner() {
         Translation2d robot = poseSupplier.get().getTranslation();
+        boolean blue = DriverStation.getAlliance().get() == Alliance.Blue;
         Translation2d[] corners = {
-                FieldConstants.AllianceZoneCorners.left,
-                FieldConstants.AllianceZoneCorners.right
+                blue ? FieldConstants.AllianceZoneCorners.blueLeft: FieldConstants.AllianceZoneCorners.redLeft,
+                blue ? FieldConstants.AllianceZoneCorners.blueRight: FieldConstants.AllianceZoneCorners.redRight,
         };
 
         return robot.getDistance(corners[0]) < robot.getDistance(corners[1])
@@ -149,16 +149,17 @@ public class Shooter extends SubsystemBase {
         Pose2d robotPose = poseSupplier.get();
         Translation2d turretOffset = turret.getRobotRelativeTranslation().rotateBy(robotPose.getRotation());
         Translation2d turretPosition = robotPose.getTranslation().plus(turretOffset);
-        Translation3d hub = DriverStation.getAlliance().get() == Alliance.Blue?  FieldConstants.Hub.topCenterPoint : FieldConstants.Hub.oppTopCenterPoint;
+        Translation3d hub = DriverStation.getAlliance().get() == Alliance.Blue ? FieldConstants.Hub.topCenterPoint
+                : FieldConstants.Hub.oppTopCenterPoint;
         Translation2d target = isInAllianceZone()
                 ? new Translation2d(hub.getX(), hub.getY())
                 : getClosestAllianceZoneCorner();
         ChassisSpeeds speeds = fieldRelativeSpeedsSupplier.get();
-        ShootOnTheFlyCalculator.ShooterCommand cmd = sotfCalculator.calculate(
+        ShootOnTheFlyCalculator.ShooterCommand cmd = (isInAllianceZone() ? sotfCalculator : passingSotfCalculator).calculate(
                 turretPosition,
                 new Translation2d(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond),
                 target,
-                0.0);
+                0.1);
         DogLog.log("Shooter/SOTF/EffectiveDistanceMeters", cmd.effectiveDistance());
         return cmd;
     }
@@ -168,10 +169,26 @@ public class Shooter extends SubsystemBase {
      */
     private static ShootOnTheFlyCalculator buildSOTFCalculator() {
         ShootOnTheFlyCalculator calc = new ShootOnTheFlyCalculator();
-        calc.addTableEntry(1.649, 1200, 6, 0.3);
-        calc.addTableEntry(1.051, 1200, 3, 1.20648052);
+        calc.addTableEntry(1.051, 1800, 3.5, 1.20648052);
+        calc.addTableEntry(1.649, 1740, 6, 1.16666667);
         calc.addTableEntry(3.002, 1980, 12, 1.27542227);
         calc.addTableEntry(3.939, 2160, 15, 1.41330576);
+                calc.addTableEntry(4.977, 2298, 25, 1.292);
+
+        return calc;
+    }
+
+    /**
+     * Builds the shoot-on-the-fly calculator with placeholder table entries.
+     */
+    private static ShootOnTheFlyCalculator buildPassingSOTFCalculator() {
+        ShootOnTheFlyCalculator calc = new ShootOnTheFlyCalculator();
+        calc.addTableEntry(3.048, 25*60, 30, 1.06844741);
+        calc.addTableEntry(3.048+1.524, 30*60, 30, 1.2677231);
+        calc.addTableEntry(3.048+1.524 +1.524, 36*60, 30, 1.4676451);
+        calc.addTableEntry(3.048+1.524+1.524+1.524, 41*60, 30, 1.63333333);
+        calc.addTableEntry(3.048+1.524+1.524+1.524+1.524, 46*60, 30, 1.6844563);
+
         return calc;
     }
 
@@ -240,23 +257,14 @@ public class Shooter extends SubsystemBase {
                     turretAngleDeg = 90;
                     rpm = FlywheelSetpoint.Pass.leaderMotorTarget.in(RotationsPerSecond);
                     break;
-                case Autoaim: {
-                    hoodAngleDeg = hoodAngleOffsetDeg.get();
-                    // Turret: continuously track the SOTF turret angle (robot-relative)
-                    turretAngleDeg = cmd.turretAngle()
-                            .minus(poseSupplier.get().getRotation())
-                            .getDegrees();
-                    rpm =  rpmOffset.get();
 
-                    // Flywheel: set target speed
-                    /*
-                     * if (isInAllianceZone()) {
-                     * flywheel.setTarget(rpm);
-                     * } else {
-                     * flywheel.setTarget(FlywheelSetpoint.Far.leaderMotorTarget.in(
-                     * RotationsPerSecond));
-                     * }
-                     */
+                case Autoaim: {
+                        hoodAngleDeg = cmd.hoodAngle(); //hoodAngleOffsetDeg.get();
+                        // Turret: continuously track the SOTF turret angle (robot-relative)
+                        turretAngleDeg = cmd.turretAngle()
+                                .minus(poseSupplier.get().getRotation())
+                                .getDegrees();
+                        rpm = cmd.rpm()/60.0;// rpmOffset.get();           
                 }
             }
 

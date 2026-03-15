@@ -187,6 +187,20 @@ public class Indexer extends SubsystemBase {
       motor.stopMotor();
     }).withName("Indexer.setTargetTemporary");
   }
+    public Command setTargetTemporaryBck(Supplier<IndexerSetpoint> setpoint) {
+    return startEnd(() -> {
+      IndexerSetpoint target = setpoint.get();
+      targetVelocityRPM = target.velocityRPM;
+      pidController.setSetpoint(
+          -8,
+          ControlType.kVoltage,
+          ClosedLoopSlot.kSlot0
+      );
+    }, () -> {
+      targetVelocityRPM = 0.0;
+      motor.stopMotor();
+    }).withName("Indexer.setTargetTemporary");
+  }
   /**
    * Drives the indexer to a specific velocity setpoint.
    *

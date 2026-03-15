@@ -68,7 +68,7 @@ public class Robot extends TimedRobot {
         private double MaxSpeed = 1.0 * TunerConstants.kSpeedAt12Volts.in(MetersPerSecond); // kSpeedAt12Volts desired
                                                                                             // top
                                                                                             // speed
-        private double MaxAngularRate = RotationsPerSecond.of(0.75).in(RadiansPerSecond); // 3/4 of a rotation per
+        private double MaxAngularRate = RotationsPerSecond.of(1.25).in(RadiansPerSecond); // 3/4 of a rotation per
                                                                                           // second
                                                                                           // max angular velocity
 
@@ -257,24 +257,37 @@ public class Robot extends TimedRobot {
                                 Commands.runOnce(() -> intakeMode = IntakeMode.B));
 
                 // --- Tuning: while A is held, use DogLog tunables as absolute setpoints ---
-                // joystick.a().whileTrue(
-                // shooter.buildTuningCommand());
+                operatorJoystick.povUp().whileTrue(
+                 shooter.buildTuningCommand());
+
+                                 operatorJoystick.povDown().whileTrue(
+                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin).alongWith(
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index)));
+
 
                 // turret autoaiadd m stuff
                 joystick.x().whileTrue(
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                                indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim));
-                
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim))
+                                .onFalse(
+                                                shooter.setHoodAngleCommand(0));
                 joystick.y().whileTrue(
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                                indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Pass));
-
-                joystick.povUp().onTrue(lintake.zeroingRoutine());
-                joystick.povRight().whileTrue(spindexer.runReverse().alongWith(indexer.runReverse()));
-                joystick.povLeft().whileTrue(shooter.runReverse().alongWith(lintake.runReverse())).onFalse(shooter.resetFlywheel().alongWith(lintake.stopCommand()));
-                joystick.povDown().onTrue(drivetrain.runOnce(() -> drivetrain.seedFieldCentric()));
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Pass))
+                                .onFalse(
+                                                shooter.setHoodAngleCommand(0));
+                operatorJoystick.b().onTrue(lintake.zeroingRoutine());
+                operatorJoystick.a().whileTrue(
+                        spindexer.setTargetTemporaryBck(SpindexerSetpoint.SpinReverse).alongWith(
+                        indexer.setTargetTemporary(IndexerSetpoint.SpinReverse)));
+                operatorJoystick.y().whileTrue(
+                        shooter.runReverse().alongWith(
+                        lintake.runReverse())).onFalse(
+                                shooter.resetFlywheel().alongWith(
+                                lintake.stopCommand()));
+                operatorJoystick.x().onTrue(drivetrain.runOnce(() -> drivetrain.seedFieldCentric()));
                 
                 //sysid
                 // joystick.x().onTrue(drivetrain.sysIdQuasistatic(SysIdRoutine.Direction.kForward));

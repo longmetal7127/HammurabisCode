@@ -91,7 +91,7 @@ public class Hood {
         commutation.MotorArrangement = MotorArrangementValue.NEO550_JST;
         commutation.AdvancedHallSupport = AdvancedHallSupportValue.Enabled;
         config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
-        config.SoftwareLimitSwitch.ForwardSoftLimitThreshold = .098145;
+        config.SoftwareLimitSwitch.ForwardSoftLimitThreshold = .085;
         config.SoftwareLimitSwitch.ReverseSoftLimitThreshold = 0;
         config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
         config.SoftwareLimitSwitch.ReverseSoftLimitEnable = true;
@@ -111,6 +111,9 @@ public class Hood {
         CurrentLimitsConfigs currentLimits = config.CurrentLimits;
         currentLimits.StatorCurrentLimit = statorCurrentLimit;
         currentLimits.StatorCurrentLimitEnable = enableStatorLimit;
+                currentLimits.SupplyCurrentLimit = statorCurrentLimit;
+        currentLimits.SupplyCurrentLimitEnable = enableStatorLimit;
+
 
         // Set brake mode
         config.MotorOutput.NeutralMode = brakeMode

@@ -210,7 +210,29 @@ public class Spindexer extends SubsystemBase {
       motor.stopMotor();
     }).withName("Spindexer.setTargetTemporary");
   }
-
+    public Command setTargetTemporaryBck(Supplier<SpindexerSetpoint> setpoint) {
+    return startEnd(() -> {
+      SpindexerSetpoint target = setpoint.get();
+      targetVelocityRPM = target.velocityRPM;
+      pidController.setSetpoint(
+          -8,
+          ControlType.kVoltage,
+          ClosedLoopSlot.kSlot0);
+    }, () -> {
+      targetVelocityRPM = 0.0;
+      motor.stopMotor();
+    }).withName("Spindexer.setTargetTemporary");
+  }
+  /**
+   * Drives the spindexer to a specific velocity setpoint.
+   *
+   * @param setpoint The setpoint to apply
+   * @return Command to run
+   */
+  public Command setTargetTemporaryBck(SpindexerSetpoint setpoint) {
+    return setTargetTemporaryBck(() -> setpoint)
+        .withName("Spindexer.setTargetTemporary(" + setpoint.name() + ")");
+  }
   /**
    * Drives the spindexer to a specific velocity setpoint.
    *

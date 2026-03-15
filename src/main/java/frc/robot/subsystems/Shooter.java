@@ -2,6 +2,7 @@ package frc.robot.subsystems;
 
 import static edu.wpi.first.units.Units.*;
 
+import java.lang.reflect.Field;
 import java.util.function.Supplier;
 
 import com.ctre.phoenix6.SignalLogger;
@@ -12,13 +13,16 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.networktables.DoubleSubscriber;
 import edu.wpi.first.units.measure.Angle;
 import edu.wpi.first.units.measure.AngularVelocity;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
@@ -45,12 +49,12 @@ public class Shooter extends SubsystemBase {
     public final Flywheel flywheel = new Flywheel();
 
     public enum ShooterMode {
-            /** Stop and Shoot Against Hub */
-            AgainstHub,
-            /** Pass across the field */
-            Pass,
-            /** Autoaim turret */
-            Autoaim
+        /** Stop and Shoot Against Hub */
+        AgainstHub,
+        /** Pass across the field */
+        Pass,
+        /** Autoaim turret */
+        Autoaim
     }
 
     private final Supplier<Pose2d> poseSupplier;
@@ -108,35 +112,17 @@ public class Shooter extends SubsystemBase {
      * Returns true when the robot is inside its own alliance zone
      * (X &lt; the alliance-zone vertical line).
      */
-    private boolean isInAllianceZone() {
+    public boolean isInAllianceZone() {
         double robotX = poseSupplier.get().getX();
-        return robotX < FieldConstants.LinesVertical.allianceZone;
-    }
-
-    /**
-     * Finds the nearest hub corner (on our alliance side) to the robot's current
-     * position.
-     */
-    private Translation2d getClosestHubCorner() {
-        Translation2d robot = poseSupplier.get().getTranslation();
-        Translation2d[] corners = {
-                FieldConstants.Hub.nearLeftCorner,
-                FieldConstants.Hub.nearRightCorner,
-                FieldConstants.Hub.farLeftCorner,
-                FieldConstants.Hub.farRightCorner
-        };
-
-        Translation2d closest = corners[0];
-        double minDist = robot.getDistance(closest);
-        for (int i = 1; i < corners.length; i++) {
-            double d = robot.getDistance(corners[i]);
-            if (d < minDist) {
-                minDist = d;
-                closest = corners[i];
-            }
+        var blue = DriverStation.getAlliance().get() == Alliance.Blue; 
+        if (blue) {
+        return true;//robotX < FieldConstants.LinesVertical.allianceZone;
+        } else {
+            return true ;//robotX > FieldConstants.LinesVertical.oppAllianceZone;
         }
-        return closest;
     }
+
+
 
     /**
      * Finds the nearest alliance-zone corner to the robot's current position.
@@ -163,32 +149,29 @@ public class Shooter extends SubsystemBase {
         Pose2d robotPose = poseSupplier.get();
         Translation2d turretOffset = turret.getRobotRelativeTranslation().rotateBy(robotPose.getRotation());
         Translation2d turretPosition = robotPose.getTranslation().plus(turretOffset);
+        Translation3d hub = DriverStation.getAlliance().get() == Alliance.Blue?  FieldConstants.Hub.topCenterPoint : FieldConstants.Hub.oppTopCenterPoint;
         Translation2d target = isInAllianceZone()
-                ? getClosestHubCorner()
+                ? new Translation2d(hub.getX(), hub.getY())
                 : getClosestAllianceZoneCorner();
         ChassisSpeeds speeds = fieldRelativeSpeedsSupplier.get();
-    ShootOnTheFlyCalculator.ShooterCommand cmd = sotfCalculator.calculate(
+        ShootOnTheFlyCalculator.ShooterCommand cmd = sotfCalculator.calculate(
                 turretPosition,
                 new Translation2d(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond),
                 target,
                 0.0);
-    DogLog.log("Shooter/SOTF/EffectiveDistanceMeters", cmd.effectiveDistance());
-    return cmd;
+        DogLog.log("Shooter/SOTF/EffectiveDistanceMeters", cmd.effectiveDistance());
+        return cmd;
     }
 
     /**
      * Builds the shoot-on-the-fly calculator with placeholder table entries.
-     * TODO: fill with real characterisation data.
      */
     private static ShootOnTheFlyCalculator buildSOTFCalculator() {
         ShootOnTheFlyCalculator calc = new ShootOnTheFlyCalculator();
-        // distance (m) → RPM, hood angle (deg), time-of-flight (s)
-        calc.addTableEntry(1.0, 2000, 5, 0.3);
-        calc.addTableEntry(2.0, 2800, 15, 0.45);
-        calc.addTableEntry(3.0, 3400, 25, 0.6);
-        calc.addTableEntry(4.0, 3900, 35, 0.75);
-        calc.addTableEntry(5.0, 4300, 42, 0.9);
-        calc.addTableEntry(6.0, 4600, 48, 1.05);
+        calc.addTableEntry(1.649, 1200, 6, 0.3);
+        calc.addTableEntry(1.051, 1200, 3, 1.20648052);
+        calc.addTableEntry(3.002, 1980, 12, 1.27542227);
+        calc.addTableEntry(3.939, 2160, 15, 1.41330576);
         return calc;
     }
 
@@ -238,44 +221,48 @@ public class Shooter extends SubsystemBase {
      * @param indexerFeedCommand   Command to feed the indexer (composed externally)
      * @return The shoot command (requires this Shooter subsystem)
      */
-    public Command buildShootCommand(Command spindexerFeedCommand, Command indexerFeedCommand, ShooterMode shooterMode) {
+    public Command buildShootCommand(Command spindexerFeedCommand, Command indexerFeedCommand,
+            ShooterMode shooterMode) {
         return run(() -> {
             var cmd = getCurrentSOTFCommand();
 
             double rpm = 0;
             double hoodAngleDeg = 0;
             double turretAngleDeg = 0;
-            switch(shooterMode) {
+            switch (shooterMode) {
                 case AgainstHub:
                     hoodAngleDeg = 5.5;
-                    turretAngleDeg = -90;
+                    turretAngleDeg = 90;
                     rpm = FlywheelSetpoint.AgainstHub.leaderMotorTarget.in(RotationsPerSecond);
                     break;
                 case Pass:
-                    hoodAngleDeg = 10;
-                    turretAngleDeg = -90;
+                    hoodAngleDeg = 30;
+                    turretAngleDeg = 90;
                     rpm = FlywheelSetpoint.Pass.leaderMotorTarget.in(RotationsPerSecond);
                     break;
                 case Autoaim: {
-                    hoodAngleDeg = cmd.hoodAngle() + hoodAngleOffsetDeg.get();
+                    hoodAngleDeg = hoodAngleOffsetDeg.get();
                     // Turret: continuously track the SOTF turret angle (robot-relative)
                     turretAngleDeg = cmd.turretAngle()
                             .minus(poseSupplier.get().getRotation())
                             .getDegrees();
-                    rpm = cmd.rpm() + rpmOffset.get();
+                    rpm =  rpmOffset.get();
 
                     // Flywheel: set target speed
                     /*
-                    if (isInAllianceZone()) {
-                        flywheel.setTarget(rpm);
-                    } else {
-                        flywheel.setTarget(FlywheelSetpoint.Far.leaderMotorTarget.in(RotationsPerSecond));
-                    } */
+                     * if (isInAllianceZone()) {
+                     * flywheel.setTarget(rpm);
+                     * } else {
+                     * flywheel.setTarget(FlywheelSetpoint.Far.leaderMotorTarget.in(
+                     * RotationsPerSecond));
+                     * }
+                     */
                 }
             }
 
             hood.setAngle(hoodAngleDeg);
-            turret.setAngle(turretAngleDeg);
+            // Compensate turret setpoint because turret hardware zero is rear-facing.
+            turret.setAngle(robotRelativeToTurretSetpointDeg(turretAngleDeg));
             flywheel.setTarget(rpm);
         }).alongWith(
                 // Spindexer + indexer: wait for flywheel to reach speed, then feed
@@ -290,7 +277,7 @@ public class Shooter extends SubsystemBase {
                                         Commands.run(this::trySpawnSimulatedFuel))))
                 .withName("Shoot");
     }
-    
+
     /**
      * Build a tuning command: while held, set hood and flywheel to the
      * DogLog tunable values (treated as absolute), aim turret using SOTF
@@ -305,10 +292,13 @@ public class Shooter extends SubsystemBase {
             double hoodAngleDeg = hoodAngleOffsetDeg.get();
 
             // Turret: continuously track the SOTF turret angle (robot-relative)
-            double turretAngleDeg = cmd.turretAngle()
+            double turretAngleDegRobotRel = cmd.turretAngle()
                     .minus(poseSupplier.get().getRotation())
                     .getDegrees();
-            turret.setAngle(turretAngleDeg);
+            // Compensate because the turret's zero is pointing directly rearward.
+            // Convert robot-relative angle (0 = forward) to turret mechanism angle (0 =
+            // rear).
+            turret.setAngle(robotRelativeToTurretSetpointDeg(turretAngleDegRobotRel));
 
             // Hood: set directly from tunable
             hood.setAngle(hoodAngleDeg);
@@ -325,7 +315,9 @@ public class Shooter extends SubsystemBase {
      * @return Command requiring this subsystem
      */
     public Command setTurretAngleCommand(double angleDegrees) {
-        return runOnce(() -> turret.setAngle(angleDegrees));
+        // Assume callers provide a robot-relative angle (0 = forward). Compensate for
+        // turret zero.
+        return runOnce(() -> turret.setAngle(robotRelativeToTurretSetpointDeg(angleDegrees)));
     }
 
     /**
@@ -335,7 +327,9 @@ public class Shooter extends SubsystemBase {
      * @return Command requiring this subsystem
      */
     public Command followTurretAngleCommand(Supplier<Double> angleDegreesSupplier) {
-        return run(() -> turret.setAngle(angleDegreesSupplier.get()));
+        // Supplier returns robot-relative angle (0 = forward). Compensate before
+        // setting.
+        return run(() -> turret.setAngle(robotRelativeToTurretSetpointDeg(angleDegreesSupplier.get())));
     }
 
     /**
@@ -401,6 +395,27 @@ public class Shooter extends SubsystemBase {
     }
 
     /**
+     * Convert a robot-relative turret angle (0 = robot forward, + right) to the
+     * turret mechanism setpoint where 0 = turret pointing directly rearward.
+     * This accounts for the turret's hardware zero being rear-facing.
+     */
+    private double robotRelativeToTurretSetpointDeg(double robotRelativeDeg) {
+        double mechDeg = robotRelativeDeg + 180.0; // map forward(0) -> rear(180)
+        return normalizeDegrees(mechDeg);
+    }
+
+    /** Normalize degrees to the range (-180, 180]. */
+    private double normalizeDegrees(double deg) {
+        while (deg > 180.0) {
+            deg -= 360.0;
+        }
+        while (deg <= -180.0) {
+            deg += 360.0;
+        }
+        return deg;
+    }
+
+    /**
      * @return Whether the flywheel is near its target velocity
      * @param threshold The acceptable error threshold
      */
@@ -435,12 +450,12 @@ public class Shooter extends SubsystemBase {
     }
 
     /**
-   * Creates a command to stop the intake.
-   * 
-   * @return A command that stops the intake
-   */
-  public Command resetFlywheel() {
-    return runOnce(() -> flywheel.setTarget(FlywheelSetpoint.AgainstHub.leaderMotorTarget.in(RotationsPerSecond)));
-  }
+     * Creates a command to stop the intake.
+     * 
+     * @return A command that stops the intake
+     */
+    public Command resetFlywheel() {
+        return runOnce(() -> flywheel.setTarget(FlywheelSetpoint.AgainstHub.leaderMotorTarget.in(RotationsPerSecond)));
+    }
 
 }

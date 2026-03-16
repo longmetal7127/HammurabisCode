@@ -54,7 +54,8 @@ public class Shooter extends SubsystemBase {
         /** Pass across the field */
         Pass,
         /** Autoaim turret */
-        Autoaim
+        Autoaim, 
+        Autonomous
     }
 
     private final Supplier<Pose2d> poseSupplier;
@@ -131,8 +132,8 @@ public class Shooter extends SubsystemBase {
         Translation2d robot = poseSupplier.get().getTranslation();
         boolean blue = DriverStation.getAlliance().get() == Alliance.Blue;
         Translation2d[] corners = {
-                blue ? FieldConstants.AllianceZoneCorners.blueLeft: FieldConstants.AllianceZoneCorners.redLeft,
-                blue ? FieldConstants.AllianceZoneCorners.blueRight: FieldConstants.AllianceZoneCorners.redRight,
+                blue ? FieldConstants.AllianceZoneCorners.blueLeft : FieldConstants.AllianceZoneCorners.redLeft,
+                blue ? FieldConstants.AllianceZoneCorners.blueRight : FieldConstants.AllianceZoneCorners.redRight,
         };
 
         return robot.getDistance(corners[0]) < robot.getDistance(corners[1])
@@ -155,11 +156,12 @@ public class Shooter extends SubsystemBase {
                 ? new Translation2d(hub.getX(), hub.getY())
                 : getClosestAllianceZoneCorner();
         ChassisSpeeds speeds = fieldRelativeSpeedsSupplier.get();
-        ShootOnTheFlyCalculator.ShooterCommand cmd = (isInAllianceZone() ? sotfCalculator : passingSotfCalculator).calculate(
-                turretPosition,
-                new Translation2d(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond),
-                target,
-                0.1);
+        ShootOnTheFlyCalculator.ShooterCommand cmd = (isInAllianceZone() ? sotfCalculator : passingSotfCalculator)
+                .calculate(
+                        turretPosition,
+                        new Translation2d(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond),
+                        target,
+                        0.1);
         DogLog.log("Shooter/SOTF/EffectiveDistanceMeters", cmd.effectiveDistance());
         return cmd;
     }
@@ -173,7 +175,7 @@ public class Shooter extends SubsystemBase {
         calc.addTableEntry(1.649, 1740, 6, 1.16666667);
         calc.addTableEntry(3.002, 1980, 12, 1.27542227);
         calc.addTableEntry(3.939, 2160, 15, 1.41330576);
-                calc.addTableEntry(4.977, 2298, 25, 1.292);
+        calc.addTableEntry(4.977, 2298, 25, 1.292);
 
         return calc;
     }
@@ -183,11 +185,11 @@ public class Shooter extends SubsystemBase {
      */
     private static ShootOnTheFlyCalculator buildPassingSOTFCalculator() {
         ShootOnTheFlyCalculator calc = new ShootOnTheFlyCalculator();
-        calc.addTableEntry(3.048, 25*60, 30, 1.06844741);
-        calc.addTableEntry(3.048+1.524, 30*60, 30, 1.2677231);
-        calc.addTableEntry(3.048+1.524 +1.524, 36*60, 30, 1.4676451);
-        calc.addTableEntry(3.048+1.524+1.524+1.524, 41*60, 30, 1.63333333);
-        calc.addTableEntry(3.048+1.524+1.524+1.524+1.524, 46*60, 30, 1.6844563);
+        calc.addTableEntry(3.048, 25 * 60, 30, 1.06844741);
+        calc.addTableEntry(3.048 + 1.524, 30 * 60, 30, 1.2677231);
+        calc.addTableEntry(3.048 + 1.524 + 1.524, 36 * 60, 30, 1.4676451);
+        calc.addTableEntry(3.048 + 1.524 + 1.524 + 1.524, 41 * 60, 30, 1.63333333);
+        calc.addTableEntry(3.048 + 1.524 + 1.524 + 1.524 + 1.524, 46 * 60, 30, 1.6844563);
 
         return calc;
     }
@@ -239,7 +241,7 @@ public class Shooter extends SubsystemBase {
      * @return The shoot command (requires this Shooter subsystem)
      */
     public Command buildShootCommand(Command spindexerFeedCommand, Command indexerFeedCommand,
-            ShooterMode shooterMode) {
+            ShooterMode shooterMode, boolean turretOnly) {
         return run(() -> {
             var cmd = getCurrentSOTFCommand();
 
@@ -257,21 +259,25 @@ public class Shooter extends SubsystemBase {
                     turretAngleDeg = 90;
                     rpm = FlywheelSetpoint.Pass.leaderMotorTarget.in(RotationsPerSecond);
                     break;
-
+                case Autonomous:
+                    hoodAngleDeg = 5.5;
+                    turretAngleDeg = 90;
+                    rpm = FlywheelSetpoint.Autonomous.leaderMotorTarget.in(RotationsPerSecond);
+                    break;
                 case Autoaim: {
-                        hoodAngleDeg = cmd.hoodAngle(); //hoodAngleOffsetDeg.get();
-                        // Turret: continuously track the SOTF turret angle (robot-relative)
-                        turretAngleDeg = cmd.turretAngle()
-                                .minus(poseSupplier.get().getRotation())
-                                .getDegrees();
-                        rpm = cmd.rpm()/60.0;// rpmOffset.get();           
+                    hoodAngleDeg = cmd.hoodAngle(); // hoodAngleOffsetDeg.get();
+                    // Turret: continuously track the SOTF turret angle (robot-relative)
+                    turretAngleDeg = cmd.turretAngle()
+                            .minus(poseSupplier.get().getRotation())
+                            .getDegrees();
+                    rpm = cmd.rpm() / 60.0;// rpmOffset.get();
                 }
             }
-
-            hood.setAngle(hoodAngleDeg);
-            // Compensate turret setpoint because turret hardware zero is rear-facing.
+            if (!turretOnly) {
+                hood.setAngle(hoodAngleDeg);
+                flywheel.setTarget(rpm);
+            }
             turret.setAngle(robotRelativeToTurretSetpointDeg(turretAngleDeg));
-            flywheel.setTarget(rpm);
         }).alongWith(
                 // Spindexer + indexer: wait for flywheel to reach speed, then feed
                 Commands.waitUntil(() -> (flywheel.isNearTarget(RotationsPerSecond.of(1))))

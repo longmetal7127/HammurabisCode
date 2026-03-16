@@ -137,8 +137,8 @@ public class Turret {
     config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
     config.SoftwareLimitSwitch.ReverseSoftLimitEnable = true;
     
-    config.SoftwareLimitSwitch.ForwardSoftLimitThreshold = Units.degreesToRotations(145);
-    config.SoftwareLimitSwitch.ReverseSoftLimitThreshold = Units.degreesToRotations(-145);
+    config.SoftwareLimitSwitch.ForwardSoftLimitThreshold = Units.degreesToRotations(130);
+    config.SoftwareLimitSwitch.ReverseSoftLimitThreshold = Units.degreesToRotations(-130);
     config.Feedback.SensorToMechanismRatio = gearRatio;
     config.Feedback.FeedbackSensorSource = FeedbackSensorSourceValue.RotorSensor;
 

@@ -53,7 +53,8 @@ public class Flywheel {
         Near(RotationsPerSecond.of(50)),
         AgainstHub(RotationsPerSecond.of(29)),
         Pass(RotationsPerSecond.of(40)),
-        Far(RotationsPerSecond.of(60));
+        Far(RotationsPerSecond.of(60)), 
+        Autonomous(RotationsPerSecond.of(31));
 
         /** The velocity target of the setpoint. */
         public final AngularVelocity leaderMotorTarget;

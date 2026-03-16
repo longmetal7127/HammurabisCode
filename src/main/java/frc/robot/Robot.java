@@ -16,6 +16,8 @@ import com.ctre.phoenix6.swerve.SwerveRequest;
 
 import choreo.auto.AutoChooser;
 import choreo.auto.AutoFactory;
+import choreo.auto.AutoRoutine;
+import choreo.auto.AutoTrajectory;
 import dev.doglog.DogLog;
 import dev.doglog.DogLogOptions;
 import edu.wpi.first.epilogue.Epilogue;
@@ -123,7 +125,6 @@ public class Robot extends TimedRobot {
                         .withTimestampReplay()
                         .withJoystickReplay();
         private final AutoFactory autoFactory;
-        private final AutoRoutines autoRoutines;
         private final AutoChooser autoChooser = new AutoChooser();
 
         public Robot() {
@@ -184,10 +185,11 @@ public class Robot extends TimedRobot {
                 }
                 fuelSim.start();
                 URCL.start(DataLogManager.getLog());
-                autoFactory = drivetrain.createAutoFactory();
-                autoRoutines = new AutoRoutines(autoFactory);
 
-                autoChooser.addRoutine("SimplePath", autoRoutines::simplePathAuto);
+                autoFactory = drivetrain.createAutoFactory();
+                autoChooser.addRoutine("Two Swipe Outpost Side", this::twoSwipeOS);
+                autoChooser.addRoutine("Do Nothing", this::doNothing);
+
                 SmartDashboard.putData("Auto Chooser", autoChooser);
 
         }
@@ -238,9 +240,7 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index),
-                                                ShooterMode.AgainstHub, false))
-                                .onFalse(
-                                                shooter.setHoodAngleCommand(0));
+                                                ShooterMode.AgainstHub, false));
 
                 joystick.leftTrigger().whileTrue(
                                 Commands.sequence(
@@ -255,7 +255,10 @@ public class Robot extends TimedRobot {
                                                                 () -> intakeMode == IntakeMode.A));
 
                 joystick.leftBumper().onTrue(
-                                Commands.runOnce(() -> intakeMode = IntakeMode.A));
+                                Commands.runOnce(() -> intakeMode = IntakeMode.A)
+                                        .alongWith(Commands.sequence(
+                                                lintake.setHeightCommand(0.1),
+                                                lintake.stopCommand())));
 
                 joystick.rightBumper().onTrue(
                                 Commands.runOnce(() -> intakeMode = IntakeMode.B));
@@ -268,21 +271,18 @@ public class Robot extends TimedRobot {
                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin).alongWith(
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index)));
 
-                // turret autoaiadd m stuff
+                // turret autoaim stuff
                 joystick.rightTrigger().whileTrue(
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                                false))
-                                .onFalse(
-                                                shooter.setHoodAngleCommand(0));
+                                                false));
                 joystick.y().whileTrue(
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Pass,
-                                                false))
-                                .onFalse(
-                                                shooter.setHoodAngleCommand(0));
+                                                false));
+
                 operatorJoystick.b().onTrue(lintake.zeroingRoutine());
                 operatorJoystick.a().whileTrue(
                                 spindexer.setTargetTemporaryBck(SpindexerSetpoint.SpinReverse).alongWith(
@@ -317,29 +317,16 @@ public class Robot extends TimedRobot {
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index),
                                                 ShooterMode.Autonomous, false)
-                                                .withTimeout(5),
-                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
-                                Commands.waitSeconds(1.5),
-                                lintake.setVelocityCommand(-0.1),
-                                Commands.waitSeconds(1.5),
-                                lintake.stopCommand(),
+                                                .withTimeout(4),
+                                lintake.deployLintake(),
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index),
                                                 ShooterMode.Autonomous, false)
-                                                .withTimeout(5),
-                                /*
-                                 * drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero)),
-                                 * // Then slowly drive forward (away from us) for 5 seconds.
-                                 * drivetrain.applyRequest(() -> drive.withVelocityX(0.5)
-                                 * .withVelocityY(0)
-                                 * .withRotationalRate(0))
-                                 * .withTimeout(5.0),
-                                 */
+                                                .withTimeout(4),
 
                                 // Reset our field centric heading to match the robot
                                 // facing away from our alliance station wall (0 deg).
-                                shooter.setHoodAngleCommand(0),
                                 drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero)),
                                 // Finally idle for the rest of auton
                                 autoChooser.selectedCommand(),
@@ -422,5 +409,36 @@ public class Robot extends TimedRobot {
         public void simulationPeriodic() {
                 fuelSim.updateSim();
 
+        }
+
+        public AutoRoutine twoSwipeOS() {
+                final AutoRoutine routine = autoFactory.newRoutine("TwoSwipe");
+                final AutoTrajectory initialGrabOSPath = routine.trajectory("InitialGrabOS");
+                final AutoTrajectory hubGrabOSPath = routine.trajectory("HubGrabOS");
+                
+                routine.active().onTrue(
+                        initialGrabOSPath.resetOdometry()
+                        .andThen(lintake.deployLintake())
+                        .alongWith(initialGrabOSPath.cmd())
+                        .andThen(shooter.buildShootCommand(
+                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
+                                false)
+                                .alongWith(lintake.oscillateIntake())
+                                .withTimeout(4))
+                        .andThen(hubGrabOSPath.cmd())
+                        .andThen(shooter.buildShootCommand(
+                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
+                                false)
+                                .alongWith(lintake.oscillateIntake())
+                                .withTimeout(4))
+                );
+                return routine;
+        }
+
+        public AutoRoutine doNothing() {
+                final AutoRoutine routine = autoFactory.newRoutine("DoNothing");
+                return routine;
         }
 }

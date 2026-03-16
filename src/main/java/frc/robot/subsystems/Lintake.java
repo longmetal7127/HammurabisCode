@@ -26,6 +26,7 @@ import edu.wpi.first.wpilibj.simulation.RoboRioSim;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.Robot.IntakeMode;
 import frc.robot.subsystems.Indexer.IndexerSetpoint;
 import frc.robot.util.TiltedElevatorSim;
 
@@ -346,5 +347,24 @@ public class Lintake extends SubsystemBase {
       return Commands.runOnce(() -> {
           setVelocity(-.1);
       });
+  }
+
+  public Command deployLintake() {
+      return setHeightCommand(getMaxHeightMeters())
+        .alongWith(setVelocityCommand(-0.1))
+        .until(() -> (Math.abs(getPosition()-getMaxHeightMeters()) <= 0.02)).
+        andThen(setVelocityCommand(-0.1))
+        .withTimeout(0.5)
+        .andThen(stopCommand());
+  }
+
+  public Command oscillateIntake() {
+    return startEnd(()->{
+          setVelocity(0.6);
+          if(Math.abs(getPosition()-getMaxHeightMeters()/2) <= 0.02)
+            setPosition(0.1);
+          else 
+            setPosition(getMaxHeightMeters()/2);
+      }, () -> setVelocity(0));
   }
 }

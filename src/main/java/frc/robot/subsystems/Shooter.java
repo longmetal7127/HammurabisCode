@@ -54,7 +54,7 @@ public class Shooter extends SubsystemBase {
         /** Pass across the field */
         Pass,
         /** Autoaim turret */
-        Autoaim, 
+        Autoaim,
         Autonomous
     }
 
@@ -242,7 +242,7 @@ public class Shooter extends SubsystemBase {
      */
     public Command buildShootCommand(Command spindexerFeedCommand, Command indexerFeedCommand,
             ShooterMode shooterMode, boolean turretOnly) {
-        return run(() -> {
+        return startEnd(() -> {
             var cmd = getCurrentSOTFCommand();
 
             double rpm = 0;
@@ -278,6 +278,8 @@ public class Shooter extends SubsystemBase {
                 flywheel.setTarget(rpm);
             }
             turret.setAngle(robotRelativeToTurretSetpointDeg(turretAngleDeg));
+        }, () -> {
+            hood.setAngle(0);
         }).alongWith(
                 // Spindexer + indexer: wait for flywheel to reach speed, then feed
                 Commands.waitUntil(() -> (flywheel.isNearTarget(RotationsPerSecond.of(1))))

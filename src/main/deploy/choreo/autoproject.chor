@@ -1,10 +1,25 @@
 {
- "name":"test_auto",
+ "name":"autoproject",
  "version":2,
  "type":"Swerve",
  "variables":{
   "expressions":{},
-  "poses":{}
+  "poses":{
+   "Handoff":{
+    "x":{
+     "exp":"4.375 m",
+     "val":4.375
+    },
+    "y":{
+     "exp":"0.65 m",
+     "val":0.65
+    },
+    "heading":{
+     "exp":"0 rad",
+     "val":0.0
+    }
+   }
+  }
  },
  "config":{
   "frontLeft":{

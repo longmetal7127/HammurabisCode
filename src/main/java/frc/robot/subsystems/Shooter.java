@@ -107,14 +107,13 @@ public class Shooter extends SubsystemBase {
         hood.simulationPeriodic();
     }
 
-    @NotLogged
     /**
      * Returns true when the robot is inside its own alliance zone
      * (X &lt; the alliance-zone vertical line).
      */
     public boolean isInAllianceZone() {
         double robotX = poseSupplier.get().getX();
-        var blue = DriverStation.getAlliance().get() == Alliance.Blue;
+        var blue = DriverStation.getAlliance().orElse(Alliance.Red) == Alliance.Blue;
         if (blue) {
             return robotX < FieldConstants.LinesVertical.allianceZone;
         } else {

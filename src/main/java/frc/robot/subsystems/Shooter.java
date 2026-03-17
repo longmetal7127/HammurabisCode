@@ -9,6 +9,7 @@ import com.ctre.phoenix6.SignalLogger;
 
 import dev.doglog.DogLog;
 import edu.wpi.first.epilogue.Logged;
+import edu.wpi.first.epilogue.NotLogged;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation3d;
@@ -41,11 +42,8 @@ import frc.robot.util.ShootOnTheFlyCalculator;
 public class Shooter extends SubsystemBase {
 
     // ── Sub-components (not subsystems) ──────────────────────────────────
-    @Logged
     public final Turret turret = new Turret();
-    @Logged
     public final Hood hood = new Hood();
-    @Logged
     public final Flywheel flywheel = new Flywheel();
 
     public enum ShooterMode {
@@ -57,7 +55,6 @@ public class Shooter extends SubsystemBase {
         Autoaim,
         Autonomous
     }
-
     private final Supplier<Pose2d> poseSupplier;
     private final Supplier<ChassisSpeeds> fieldRelativeSpeedsSupplier;
     private final FuelSim fuelSim;
@@ -110,6 +107,7 @@ public class Shooter extends SubsystemBase {
         hood.simulationPeriodic();
     }
 
+    @NotLogged
     /**
      * Returns true when the robot is inside its own alliance zone
      * (X &lt; the alliance-zone vertical line).
@@ -438,7 +436,7 @@ public class Shooter extends SubsystemBase {
     public boolean isFlywheelNearTarget(AngularVelocity threshold) {
         return flywheel.isNearTarget(threshold);
     }
-
+    
     public final SysIdRoutine m_sysIdRoutine = new SysIdRoutine(
             new SysIdRoutine.Config(
                     null, // Use default ramp rate (1 V/s)
@@ -458,7 +456,7 @@ public class Shooter extends SubsystemBase {
     public Command sysIdDynamic(SysIdRoutine.Direction direction) {
         return m_sysIdRoutine.dynamic(direction);
     }
-
+    
     public Command runReverse() {
         return Commands.runOnce(() -> {
             flywheel.setTarget(FlywheelSetpoint.Outtake.leaderMotorTarget.in(RotationsPerSecond));

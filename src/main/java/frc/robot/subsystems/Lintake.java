@@ -118,7 +118,7 @@ public class Lintake extends SubsystemBase {
         0);
 
     intakeWheelMotor = new SparkMax(7, MotorType.kBrushless);
-    sparkWheelPidController = intakeWheelMotor.getClosedLoopController(); 
+    sparkWheelPidController = intakeWheelMotor.getClosedLoopController();
     SparkFlexConfig wheelConfig = new SparkFlexConfig();
     wheelConfig.idleMode(IdleMode.kBrake);
     wheelConfig.smartCurrentLimit(40);
@@ -233,8 +233,10 @@ public class Lintake extends SubsystemBase {
   public void setVelocity(double velocity) {
     setVelocity(velocity, 0);
   }
+
   public Command setVelocityCommand(double velocity) {
-    return startEnd(()-> setVelocity(velocity), () -> setVelocity(0)).withName("Lintake.setVelocityCommand(" + velocity + " m/s)");
+    return startEnd(() -> setVelocity(velocity), () -> setVelocity(0))
+        .withName("Lintake.setVelocityCommand(" + velocity + " m/s)");
   }
 
   /**
@@ -335,8 +337,7 @@ public class Lintake extends SubsystemBase {
     return run(() -> {
       motor.set(-0.25);
       setVelocity(-.1);
-    }).until(() -> (getCurrent() >=35)
-    ).andThen(() -> {
+    }).until(() -> (getCurrent() >= 35)).andThen(() -> {
       encoder.setPosition(0);
       motor.set(0);
       setVelocity(0);
@@ -344,27 +345,26 @@ public class Lintake extends SubsystemBase {
   }
 
   public Command runReverse() {
-      return Commands.runOnce(() -> {
-          setVelocity(-.1);
-      });
+    return Commands.runOnce(() -> {
+      setVelocity(-.1);
+    });
   }
 
   public Command deployLintake() {
-      return setHeightCommand(getMaxHeightMeters())
-        .alongWith(setVelocityCommand(-0.1))
-        .until(() -> (Math.abs(getPosition()-getMaxHeightMeters()) <= 0.02)).
-        andThen(setVelocityCommand(-0.1))
-        .withTimeout(0.5)
-        .andThen(stopCommand());
+    return Commands.sequence(
+        setHeightCommand(getMaxHeightMeters())
+            .until(() -> (Math.abs(getPosition() - getMaxHeightMeters()) <= 0.02)),
+        setVelocityCommand(-0.1).withTimeout(0.5),
+        stopCommand());
   }
 
   public Command oscillateIntake() {
-    return startEnd(()->{
-          setVelocity(0.6);
-          if(Math.abs(getPosition()-getMaxHeightMeters()/2) <= 0.02)
-            setPosition(0.1);
-          else 
-            setPosition(getMaxHeightMeters()/2);
-      }, () -> setVelocity(0));
+    return startEnd(() -> {
+      setVelocity(0.6);
+      if (Math.abs(getPosition() - getMaxHeightMeters() / 2) <= 0.02)
+        setPosition(0.1);
+      else
+        setPosition(getMaxHeightMeters() / 2);
+    }, () -> setVelocity(0));
   }
 }

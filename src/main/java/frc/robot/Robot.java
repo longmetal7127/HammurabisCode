@@ -49,6 +49,7 @@ import frc.robot.subsystems.Lintake;
 import frc.robot.subsystems.Shooter;
 import frc.robot.subsystems.Spindexer;
 import frc.robot.subsystems.Spindexer.SpindexerSetpoint;
+import frc.robot.util.ChoreoVars;
 import frc.robot.util.CommandGamesirController;
 import frc.robot.util.FuelSim;
 import frc.robot.vision.CameraConfig;
@@ -80,6 +81,7 @@ public class Robot extends TimedRobot {
                                                                                  // motors
         private final SwerveRequest.SwerveDriveBrake brake = new SwerveRequest.SwerveDriveBrake();
         private final SwerveRequest.PointWheelsAt point = new SwerveRequest.PointWheelsAt();
+        private final SwerveRequest.Idle idle = new SwerveRequest.Idle();
 
         private final Telemetry logger = new Telemetry(MaxSpeed);
 
@@ -188,7 +190,7 @@ public class Robot extends TimedRobot {
 
                 autoFactory = drivetrain.createAutoFactory();
                 autoChooser.addRoutine("Two Swipe Outpost Side", this::twoSwipeOS);
-                autoChooser.addRoutine("Do Nothing", this::doNothing);
+                autoChooser.addRoutine("Shoot into Hub", this::shootIntoHub);
 
                 SmartDashboard.putData("Auto Chooser", autoChooser);
 
@@ -308,31 +310,7 @@ public class Robot extends TimedRobot {
         }
 
         public Command getAutonomousCommand() {
-                // Simple drive forward auton
-                final var idle = new SwerveRequest.Idle();
-                return Commands.sequence(
-                                Commands.waitSeconds(0.5),
-                                // shoot as expected
-                                shooter.buildShootCommand(
-                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
-                                                ShooterMode.Autonomous, false)
-                                                .withTimeout(4),
-                                lintake.deployLintake(),
-                                shooter.buildShootCommand(
-                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
-                                                ShooterMode.Autonomous, false)
-                                                .withTimeout(4),
-
-                                // Reset our field centric heading to match the robot
-                                // facing away from our alliance station wall (0 deg).
-                                drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero)),
-                                // Finally idle for the rest of auton
-                                autoChooser.selectedCommand(),
-
-                                drivetrain.applyRequest(() -> idle));
-
+                return autoChooser.selectedCommand();
         }
 
         @Override
@@ -417,28 +395,51 @@ public class Robot extends TimedRobot {
                 final AutoTrajectory hubGrabOSPath = routine.trajectory("HubGrabOS");
                 
                 routine.active().onTrue(
-                        initialGrabOSPath.resetOdometry()
-                        .andThen(lintake.deployLintake())
-                        .alongWith(initialGrabOSPath.cmd())
-                        .andThen(shooter.buildShootCommand(
-                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                false)
-                                .alongWith(lintake.oscillateIntake())
-                                .withTimeout(4))
-                        .andThen(hubGrabOSPath.cmd())
-                        .andThen(shooter.buildShootCommand(
-                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                false)
-                                .alongWith(lintake.oscillateIntake())
-                                .withTimeout(4))
-                );
+                        Commands.sequence(
+                                initialGrabOSPath.resetOdometry(),
+                                lintake.deployLintake().alongWith(initialGrabOSPath.cmd()),
+                                shooter.buildShootCommand(
+                                        spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                        indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
+                                        false)
+                                        .alongWith(lintake.oscillateIntake())
+                                        .alongWith(drivetrain.applyRequest(() -> brake))
+                                        .withTimeout(4),
+                                hubGrabOSPath.cmd(),
+                                drivetrain.applyRequest(() -> brake),
+                                shooter.buildShootCommand(
+                                        spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                        indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
+                                        false)
+                                        .alongWith(lintake.oscillateIntake())
+                                        .alongWith(drivetrain.applyRequest(() -> brake))
+                                        .withTimeout(4),
+                                drivetrain.applyRequest(() -> idle),
+                                drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
                 return routine;
         }
 
-        public AutoRoutine doNothing() {
-                final AutoRoutine routine = autoFactory.newRoutine("DoNothing");
+        //shoot into the hub without moving
+        public AutoRoutine shootIntoHub() {
+                final AutoRoutine routine = autoFactory.newRoutine("ShootIntoHub");
+                
+                routine.active().onTrue(
+                        Commands.sequence(
+                                Commands.runOnce(() -> drivetrain.resetPose(ChoreoVars.Poses.Handoff)),
+                                shooter.buildShootCommand(
+                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
+                                                ShooterMode.Autoaim, false)
+                                                .withTimeout(4),
+                                lintake.deployLintake(),
+                                shooter.buildShootCommand(
+                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
+                                                ShooterMode.Autoaim, false)
+                                                .alongWith(lintake.oscillateIntake())
+                                                .withTimeout(4),
+                                drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero)),
+                                drivetrain.applyRequest(() -> idle)));
                 return routine;
         }
 }

@@ -4,6 +4,11 @@
       "visible": true
     }
   },
+  "System Joysticks": {
+    "window": {
+      "visible": false
+    }
+  },
   "keyboardJoysticks": [
     {
       "axisConfig": [
@@ -17,7 +22,7 @@
         },
         {
           "decKey": 69,
-          "incKey": 82,
+          "incKey": 81,
           "keyRate": 0.009999999776482582
         },
         {},

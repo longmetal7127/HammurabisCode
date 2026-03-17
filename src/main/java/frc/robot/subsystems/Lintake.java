@@ -56,6 +56,7 @@ public class Lintake extends SubsystemBase {
   private final double drumRadius = Units.inchesToMeters(0.5); // meters
   private final double minHeight = 0;
   private final double maxHeight = 0.318;
+  private final double retractDetectVelocityThreshold = -0.2; // m/s
 
   // Feedforward
 
@@ -139,6 +140,12 @@ public class Lintake extends SubsystemBase {
         double pidOutput = positionController.calculate(getPosition(), targetHeightMeters);
         double ffOutput = feedforward.calculate(positionController.getSetpoint().velocity);
         motor.setVoltage(MathUtil.clamp(pidOutput + ffOutput, -12.0, 12.0));
+      }
+    } else {
+      // When limp, detect external pushes and actively retract
+      if (getVelocity() < retractDetectVelocityThreshold && getPosition() > minHeight + 0.05) {
+        System.out.println("Lintake pushed in by external force! Retracting.");
+        setPosition(minHeight);
       }
     }
   }

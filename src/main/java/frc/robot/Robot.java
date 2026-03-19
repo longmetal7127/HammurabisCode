@@ -281,13 +281,13 @@ public class Robot extends TimedRobot {
                                 Commands.runOnce(() -> intakeMode = IntakeMode.B));
 
                 // --- Tuning: while A is held, use DogLog tunables as absolute setpoints ---
-                operatorJoystick.povUp().whileTrue(
+               /*  operatorJoystick.povUp().whileTrue(
                                 shooter.buildTuningCommand());
 
                 operatorJoystick.povDown().whileTrue(
                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin).alongWith(
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index)));
-
+*/
                 // turret autoaim stuff
                 joystick.rightTrigger().whileTrue(
                                 shooter.buildShootCommand(
@@ -313,8 +313,10 @@ public class Robot extends TimedRobot {
                 operatorJoystick.x().onTrue(drivetrain.runOnce(() -> drivetrain.seedFieldCentric()));
 
                 // sysid
-                // joystick.x().onTrue(drivetrain.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
-                // joystick.y().onTrue(drivetrain.sysIdDynamic(SysIdRoutine.Direction.kForward));
+               operatorJoystick.povLeft().whileTrue(drivetrain.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
+                operatorJoystick.povUp().whileTrue(drivetrain.sysIdDynamic(SysIdRoutine.Direction.kForward));
+                operatorJoystick.povDown().whileTrue(drivetrain.sysIdQuasistatic(SysIdRoutine.Direction.kReverse));
+                operatorJoystick.povRight().whileTrue(drivetrain.sysIdDynamic(SysIdRoutine.Direction.kReverse));
 
                 drivetrain.registerTelemetry(logger::telemeterize);
 

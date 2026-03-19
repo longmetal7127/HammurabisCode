@@ -158,7 +158,7 @@ public class Shooter extends SubsystemBase {
                         turretPosition,
                         new Translation2d(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond),
                         target,
-                        0.1);
+                        0.2);
         DogLog.log("Shooter/SOTF/EffectiveDistanceMeters", cmd.effectiveDistance());
         return cmd;
     }
@@ -168,11 +168,13 @@ public class Shooter extends SubsystemBase {
      */
     private static ShootOnTheFlyCalculator buildSOTFCalculator() {
         ShootOnTheFlyCalculator calc = new ShootOnTheFlyCalculator();
-        calc.addTableEntry(1.051, 1800, 3.5, 1.20648052);
-        calc.addTableEntry(1.649, 1740, 6, 1.16666667);
-        calc.addTableEntry(3.002, 1980, 12, 1.27542227);
-        calc.addTableEntry(3.939, 2160, 15, 1.41330576);
+        calc.addTableEntry(1.127, 1800, 4.4, 1.20648052);
+        calc.addTableEntry(2.111, 32*60, 9.5, 1.16666667);
+        calc.addTableEntry(3.002, 33*60, 13, 1.27542227);
+        calc.addTableEntry(4.001, 36*60, 17, 1.41330576);
         calc.addTableEntry(4.977, 2298, 25, 1.292);
+        calc.addTableEntry(5.980, 41*60, 30, 1.292);
+
 
         return calc;
     }
@@ -239,7 +241,7 @@ public class Shooter extends SubsystemBase {
      */
     public Command buildShootCommand(Command spindexerFeedCommand, Command indexerFeedCommand,
             ShooterMode shooterMode, boolean turretOnly) {
-        return startEnd(() -> {
+        return runEnd(() -> {
             var cmd = getCurrentSOTFCommand();
 
             double rpm = 0;
@@ -262,7 +264,7 @@ public class Shooter extends SubsystemBase {
                     rpm = FlywheelSetpoint.Autonomous.leaderMotorTarget.in(RotationsPerSecond);
                     break;
                 case Autoaim: {
-                    hoodAngleDeg = cmd.hoodAngle(); // hoodAngleOffsetDeg.get();
+                    hoodAngleDeg = cmd.hoodAngle(); //hoodAngleOffsetDeg.get();
                     // Turret: continuously track the SOTF turret angle (robot-relative)
                     turretAngleDeg = cmd.turretAngle()
                             .minus(poseSupplier.get().getRotation())

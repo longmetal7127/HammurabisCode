@@ -356,8 +356,8 @@ public class Turret {
    */
   public Pose3d getMechanismPose() {
     return new Pose3d(
-        new Translation3d(0.1651, 0.1016, 0.3349752),
-        new Rotation3d(0, 0, Math.toRadians(getAngleDegrees())));
+        new Translation3d(0.1651, 0.1016, 0.3349752).rotateBy(new Rotation3d(0, 0, Math.PI)),
+        new Rotation3d(0, 0, Math.toRadians(getAngleDegrees())+Math.PI/2));
   }
 
   /**

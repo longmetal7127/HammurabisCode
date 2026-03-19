@@ -5,6 +5,7 @@ import com.ctre.phoenix6.swerve.SwerveDrivetrain.SwerveDriveState;
 
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
+import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
@@ -60,7 +61,7 @@ public class Telemetry {
     /* Mechanism poses for visualization */
     private final NetworkTable mechanismTable = inst.getTable("MechanismPoses");
     private final StructArrayPublisher<Pose3d> mechanismPoses = mechanismTable.getStructArrayTopic("Poses", Pose3d.struct).publish();
-    
+
     /* Mechanisms to represent the swerve module states */
     private final Mechanism2d[] m_moduleMechanisms = new Mechanism2d[] {
         new Mechanism2d(1, 1),
@@ -133,6 +134,10 @@ public class Telemetry {
      * @param turretPose 3D pose of the turret mechanism
      */
     public void updateMechanismPoses(Pose3d lintakePose, Pose3d turretPose, Pose3d hoodPose) {
-        mechanismPoses.set(new Pose3d[] { lintakePose, turretPose, hoodPose });
+        mechanismPoses.set(new Pose3d[] {
+            lintakePose,
+            turretPose,
+            hoodPose
+        });
     }
 }

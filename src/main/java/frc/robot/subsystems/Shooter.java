@@ -219,7 +219,7 @@ public class Shooter extends SubsystemBase {
         fuelSim.launchFuel(
                 MetersPerSecond.of(exitSpeedMps),
                 Radians.of(hoodPitchRad),
-                Radians.of(turretYawRad),
+                Radians.of(turretYawRad-Math.PI / 2),
                 Inches.of(22)); // launch height — above bumper height
     }
 

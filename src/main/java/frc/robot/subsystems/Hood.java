@@ -24,6 +24,7 @@ import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.epilogue.Logged;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation3d;
+import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.units.measure.*;
@@ -260,9 +261,7 @@ public class Hood {
 
     public Pose3d getMechanismPose(Rotation3d turretRotation) {
         double angleRadians = Rotations.of(getPosition()).in(Radians);
-        return new Pose3d(0.2110268,
-                0.1016,
-                0.504698,
+        return new Pose3d(new Translation3d(0.2110268, 0.1016, 0.504698).rotateBy(new Rotation3d(0,0,Math.PI)),
                 new Rotation3d(0, -0.659734457 + angleRadians, 0).plus(turretRotation));
     }
 

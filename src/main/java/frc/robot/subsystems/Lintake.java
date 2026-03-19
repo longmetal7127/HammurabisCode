@@ -4,6 +4,11 @@ import com.revrobotics.RelativeEncoder;
 import com.revrobotics.spark.ClosedLoopSlot;
 import com.revrobotics.spark.FeedbackSensor;
 import com.revrobotics.spark.SparkBase.ControlType;
+
+import java.util.Map;
+import java.util.Set;
+import java.util.function.BooleanSupplier;
+
 import com.revrobotics.PersistMode;
 import com.revrobotics.ResetMode;
 import com.revrobotics.spark.SparkClosedLoopController;
@@ -62,6 +67,7 @@ public class Lintake extends SubsystemBase {
   private final RelativeEncoder encoder;
   private final SparkSim motorSim;
   private final SparkClosedLoopController sparkPidController;
+
 
   private final SparkMax intakeWheelMotor;
   private final SparkClosedLoopController sparkWheelPidController;
@@ -322,11 +328,11 @@ public class Lintake extends SubsystemBase {
     // Create pose with translation and rotation
     // Assuming intake base is at front center of robot
     return new Pose3d(
-        new Translation3d(-currentHeightMeters, 0, 0).rotateBy(new Rotation3d(0, Math.toRadians(tiltAngleDegrees), 0)), // Base
+        new Translation3d(-currentHeightMeters, 0, 0).rotateBy(new Rotation3d(0, Math.toRadians(tiltAngleDegrees), Math.PI)), // Base
                                                                                                                         // position
                                                                                                                         // +
                                                                                                                         // extension
-        new Rotation3d(Math.PI * 0.5, 0, 0));
+        new Rotation3d(Math.PI * 0.5, 0, Math.PI));
   }
 
   public boolean getIntakeEnabled() {
@@ -354,17 +360,27 @@ public class Lintake extends SubsystemBase {
     return Commands.sequence(
         setHeightCommand(getMaxHeightMeters())
             .until(() -> (Math.abs(getPosition() - getMaxHeightMeters()) <= 0.02)),
-        setVelocityCommand(-0.1).withTimeout(0.5),
-        stopCommand());
+        setVelocityCommand(-0.1).withTimeout(1));
   }
 
+  /**
+   * Creates a command that oscillates the intake between two setpoints.
+   * The intake will move between the lower and upper positions continuously
+   * until the command is interrupted.
+   * 
+   * @param lowerPosition The lower setpoint in meters
+   * @param upperPosition The upper setpoint in meters
+   * @return A command that oscillates the intake between the two positions
+   */
   public Command oscillateIntake() {
-    return startEnd(() -> {
-      setVelocity(0.6);
-      if (Math.abs(getPosition() - getMaxHeightMeters() / 2) <= 0.02)
-        setPosition(0.1);
-      else
-        setPosition(getMaxHeightMeters() / 2);
-    }, () -> setVelocity(0));
+    return setHeightCommand(0.1)
+      .andThen(run(() -> {
+        if(Math.abs(getPosition() - 0.1) <= 0.02) {
+          setPosition(getMaxHeightMeters()/2);
+        } else if(Math.abs(getPosition() - getMaxHeightMeters()/2) <= 0.02) { 
+          setPosition(0.1);
+        }
+      }));
   }
+
 }

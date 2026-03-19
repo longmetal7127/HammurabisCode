@@ -24,28 +24,14 @@ public record ChoreoTraj(
     Pose2d initialPoseBlue,
     Pose2d endPoseBlue
 ) {
-    public static final ChoreoTraj InitialGrabOS = new ChoreoTraj(
-        "InitialGrabOS",
-        OptionalInt.empty(),
-        5.33258,
-        new Pose2d(4.375, 0.65, Rotation2d.fromRadians(0)),
-        new Pose2d(4.375, 0.65, Rotation2d.fromRadians(0))
-    );
-    public static final ChoreoTraj HubGrabOS = new ChoreoTraj(
-        "HubGrabOS",
-        OptionalInt.empty(),
-        5.5552,
-        new Pose2d(4.375, 0.65, Rotation2d.fromRadians(0)),
-        new Pose2d(4.375, 0.65, Rotation2d.fromRadians(0))
-    );
+    
 
     /**
      * A map between trajectory names and their corresponding data.
      * This allows for trajectory data to be looked up with strings during runtime.
      */
     public static final Map<String, ChoreoTraj> ALL_TRAJECTORIES = Map.ofEntries(
-        Map.entry("InitialGrabOS", InitialGrabOS),
-        Map.entry("HubGrabOS", HubGrabOS)
+    
     );
 
     /**

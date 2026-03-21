@@ -7,8 +7,8 @@
   "poses":{
    "HandoffLeft":{
     "x":{
-     "exp":"4.375 m",
-     "val":4.375
+     "exp":"4 m",
+     "val":4.0
     },
     "y":{
      "exp":"7.375 m",
@@ -21,8 +21,8 @@
    },
    "HandoffRight":{
     "x":{
-     "exp":"4.375 m",
-     "val":4.375
+     "exp":"4 m",
+     "val":4.0
     },
     "y":{
      "exp":"0.65 m",

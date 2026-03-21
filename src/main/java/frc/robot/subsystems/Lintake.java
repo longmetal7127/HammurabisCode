@@ -360,7 +360,7 @@ public class Lintake extends SubsystemBase {
     return Commands.sequence(
         setHeightCommand(getMaxHeightMeters())
             .until(() -> (Math.abs(getPosition() - getMaxHeightMeters()) <= 0.02)),
-        setVelocityCommand(-0.1).withTimeout(1));
+        setVelocityCommand(-0.1).withTimeout(1.5));
   }
 
   /**

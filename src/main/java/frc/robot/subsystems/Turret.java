@@ -301,10 +301,21 @@ public class Turret {
    * @param angleDegrees The target angle in degrees
    */
   public void setAngle(double angleDegrees) {
+    setAngle(angleDegrees, 0.0);
+  }
+
+  /**
+   * Set pivot angle with an angular velocity feedforward.
+   * 
+   * @param angleDegrees The target angle in degrees 
+   * @param velocityFFRadPerSec The velocity feedforward in radians per second
+   */
+  public void setAngle(double angleDegrees, double velocityFFRadPerSec) {
     // Convert degrees to rotations
     double positionRotations = Units.degreesToRotations(angleDegrees);
+    double velocityFFRotPerSec = Units.radiansToRotations(velocityFFRadPerSec);
     setpoint = angleDegrees;
-    motor.setControl(positionRequest.withPosition(positionRotations));
+    motor.setControl(positionRequest.withPosition(positionRotations).withVelocity(velocityFFRotPerSec));
   }
 
   /**

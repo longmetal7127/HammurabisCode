@@ -107,10 +107,10 @@ public class Robot extends TimedRobot {
                                         new Translation3d(Inches.of(-12.895), Inches.of(-10.918), Inches.of(9.224)),
                                         new Rotation3d(0, Math.toRadians(-55), Math.toRadians(-150)))),
                         new CameraConfig("left-side", new Transform3d(
-                                        new Translation3d(Inches.of(1.105), Inches.of(12.257), Inches.of(8.235)),
+                                        new Translation3d(Inches.of(1.105), Inches.of(12.174), Inches.of(8.177)),
                                         new Rotation3d(0, Math.toRadians(-35), Math.toRadians(90)))),
                         new CameraConfig("right-side", new Transform3d(
-                                        new Translation3d(Inches.of(-4.187), Inches.of(-10.888), Inches.of(10.735)),
+                                        new Translation3d(Inches.of(-4.187), Inches.of(-10.805), Inches.of(10.177)),
                                         new Rotation3d(Degrees.of(0), Degrees.of(-35), Degrees.of(-90))
 
                         )));
@@ -147,16 +147,16 @@ public class Robot extends TimedRobot {
                 });
                 Epilogue.bind(this);
 
-                CommandScheduler.getInstance().onCommandInitialize(CommandsLogging::commandStarted);
-                CommandScheduler.getInstance().onCommandFinish(CommandsLogging::commandEnded);
-                CommandScheduler.getInstance()
+                //CommandScheduler.getInstance().onCommandInitialize(CommandsLogging::commandStarted);
+                //CommandScheduler.getInstance().onCommandFinish(CommandsLogging::commandEnded);
+               /*  CommandScheduler.getInstance()
                                 .onCommandInterrupt(
                                                 (interrupted, interrupting) -> {
                                                         interrupting.ifPresent(
                                                                         interrupter -> CommandsLogging.runningInterrupters
                                                                                         .put(interrupter, interrupted));
                                                         CommandsLogging.commandEnded(interrupted);
-                                                });
+                                                });*/
 
                 // Initialize shooter after drivetrain so we can pass suppliers
                 shooter = new Shooter(
@@ -334,8 +334,8 @@ public class Robot extends TimedRobot {
         public void robotPeriodic() {
                 m_timeAndJoystickReplay.update();
                 CommandScheduler.getInstance().run();
-                CommandsLogging.logRunningCommands();
-                CommandsLogging.logRequiredSubsystems();
+                //CommandsLogging.logRunningCommands();
+                //CommandsLogging.logRequiredSubsystems();
                 vision.periodic();
                 logger.updateMechanismPoses(lintake.getMechanismPose(),
                                 shooter.getTurretMechanismPose(),

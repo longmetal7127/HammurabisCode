@@ -27,6 +27,7 @@ import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.FieldConstants;
 import frc.robot.subsystems.Flywheel.FlywheelSetpoint;
@@ -145,20 +146,23 @@ public class Shooter extends SubsystemBase {
      */
     private ShootOnTheFlyCalculator.ShooterCommand getCurrentSOTFCommand() {
         Pose2d robotPose = poseSupplier.get();
-        Translation2d turretOffset = turret.getRobotRelativeTranslation().rotateBy(robotPose.getRotation());
-        Translation2d turretPosition = robotPose.getTranslation().plus(turretOffset);
         Translation3d hub = DriverStation.getAlliance().get() == Alliance.Blue ? FieldConstants.Hub.topCenterPoint
                 : FieldConstants.Hub.oppTopCenterPoint;
         Translation2d target = isInAllianceZone()
                 ? new Translation2d(hub.getX(), hub.getY())
                 : getClosestAllianceZoneCorner();
         ChassisSpeeds speeds = fieldRelativeSpeedsSupplier.get();
-        ShootOnTheFlyCalculator.ShooterCommand cmd = (isInAllianceZone() ? sotfCalculator : passingSotfCalculator)
-                .calculate(
-                        turretPosition,
-                        new Translation2d(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond),
-                        target,
-                        0.2);
+        
+        // Pass the robot-relative offset to the calculator so it handles the omega*r math itself
+        ShootOnTheFlyCalculator activeCalculator = isInAllianceZone() ? sotfCalculator : passingSotfCalculator;
+        
+        ShootOnTheFlyCalculator.ShooterCommand cmd = activeCalculator.calculate(
+                robotPose.getTranslation(),
+                robotPose.getRotation(),
+                new Translation2d(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond),
+                speeds.omegaRadiansPerSecond,
+                target,
+                0.2);
         DogLog.log("Shooter/SOTF/EffectiveDistanceMeters", cmd.effectiveDistance());
         return cmd;
     }
@@ -225,6 +229,9 @@ public class Shooter extends SubsystemBase {
     }
 
     // ── Commands ─────────────────────────────────────────────────────────
+        public Trigger readyToShoot = new Trigger(() -> 
+                flywheel.isNearTarget(RotationsPerSecond.of(10)) 
+                && Math.abs(turret.getAngleDegrees() - turret.setpoint) < 2.0);
 
     /**
      * Builds a command that continuously aims and shoots while held.
@@ -241,6 +248,8 @@ public class Shooter extends SubsystemBase {
      */
     public Command buildShootCommand(Command spindexerFeedCommand, Command indexerFeedCommand,
             ShooterMode shooterMode, boolean turretOnly) {
+        
+        
         return runEnd(() -> {
             var cmd = getCurrentSOTFCommand();
 
@@ -276,12 +285,13 @@ public class Shooter extends SubsystemBase {
                 hood.setAngle(hoodAngleDeg);
                 flywheel.setTarget(rpm);
             }
-            turret.setAngle(robotRelativeToTurretSetpointDeg(turretAngleDeg));
+            
+            double turretFFRadPerSec = (shooterMode == ShooterMode.Autoaim) ? cmd.turretAngularVelocityFFRadPerSec() : 0.0;
+            turret.setAngle(robotRelativeToTurretSetpointDeg(turretAngleDeg), turretFFRadPerSec);
         }, () -> {
             hood.setAngle(0);
         }).alongWith(
-                // Spindexer + indexer: wait for flywheel to reach speed, then feed
-                Commands.waitUntil(() -> (flywheel.isNearTarget(RotationsPerSecond.of(1))))
+                Commands.waitUntil(readyToShoot)
                         .andThen(
                                 // Reset spawn timer so the first fuel fires immediately
                                 Commands.runOnce(() -> fuelSpawnTimer.restart()),
@@ -289,8 +299,10 @@ public class Shooter extends SubsystemBase {
                                         spindexerFeedCommand,
                                         indexerFeedCommand,
                                         // Periodically spawn simulated fuel while feeding
-                                        Commands.run(this::trySpawnSimulatedFuel))))
-                .withName("Shoot");
+                                        Commands.run(this::trySpawnSimulatedFuel)
+                                ).until(() -> !readyToShoot.getAsBoolean())
+                        ).repeatedly()
+        ).withName("Shoot");
     }
 
     /**

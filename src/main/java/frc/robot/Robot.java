@@ -415,7 +415,9 @@ public class Robot extends TimedRobot {
                         Commands.sequence(
                                 initialGrabPath.resetOdometry(),
 
-                                lintake.deployLintake().alongWith(initialGrabPath.cmd()),
+                                lintake.deployLintake(),
+                                Commands.waitSeconds(0.5),
+                                initialGrabPath.cmd(),
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
@@ -443,7 +445,9 @@ public class Robot extends TimedRobot {
                         Commands.sequence(
                                 initialGrabPath.resetOdometry(),
 
-                                lintake.deployLintake().alongWith(initialGrabPath.cmd()),
+                                lintake.deployLintake(),
+                                Commands.waitSeconds(0.5),
+                                initialGrabPath.cmd(),
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
@@ -479,7 +483,9 @@ public class Robot extends TimedRobot {
                         Commands.sequence(
                                 initialGrabPath.resetOdometry(),
                                 
-                                lintake.deployLintake().alongWith(initialGrabPath.cmd()),
+                                lintake.deployLintake(),
+                                Commands.waitSeconds(0.5),
+                                initialGrabPath.cmd(),
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
@@ -507,7 +513,9 @@ public class Robot extends TimedRobot {
                         Commands.sequence(
                                 initialGrabPath.resetOdometry(),
 
-                                lintake.deployLintake().alongWith(initialGrabPath.cmd()),
+                                lintake.deployLintake(),
+                                Commands.waitSeconds(0.5),
+                                initialGrabPath.cmd(),
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
@@ -545,7 +553,9 @@ public class Robot extends TimedRobot {
                         Commands.sequence(
                                 initialGrabPath.resetOdometry(),
 
-                                lintake.deployLintake().alongWith(initialGrabPath.cmd()),
+                                lintake.deployLintake(),
+                                Commands.waitSeconds(0.5),
+                                initialGrabPath.cmd(),
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
@@ -581,7 +591,9 @@ public class Robot extends TimedRobot {
                         Commands.sequence(
                                 initialGrabPath.resetOdometry(),
 
-                                lintake.deployLintake().alongWith(initialGrabPath.cmd()),
+                                lintake.deployLintake(),
+                                Commands.waitSeconds(0.5),
+                                initialGrabPath.cmd(),
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
@@ -616,6 +628,7 @@ public class Robot extends TimedRobot {
                                                 ShooterMode.Autoaim, false)
                                                 .withTimeout(4),
                                 lintake.deployLintake(),
+                                Commands.waitSeconds(0.5),
 
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),

@@ -342,7 +342,7 @@ public class Lintake extends SubsystemBase {
   public Command zeroingRoutine() {
     return run(() -> {
       motor.set(-0.25);
-      setVelocity(-.1);
+      runReverse();
     }).until(() -> (getCurrent() >= 35)).andThen(() -> {
       encoder.setPosition(0);
       motor.set(0);
@@ -360,7 +360,9 @@ public class Lintake extends SubsystemBase {
     return Commands.sequence(
         setHeightCommand(getMaxHeightMeters())
             .until(() -> (Math.abs(getPosition() - getMaxHeightMeters()) <= 0.02)),
-        setVelocityCommand(-0.1).withTimeout(1.5));
+      runReverse(),
+      Commands.waitSeconds(1),
+      stopCommand());
   }
 
   /**

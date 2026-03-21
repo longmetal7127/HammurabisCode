@@ -231,7 +231,7 @@ public class Shooter extends SubsystemBase {
     // ── Commands ─────────────────────────────────────────────────────────
         public Trigger readyToShoot = new Trigger(() -> 
                 flywheel.isNearTarget(RotationsPerSecond.of(10)) 
-                && Math.abs(turret.getAngleDegrees() - turret.setpoint) < 2.0);
+                && Math.abs(turret.getAngleDegrees() - turret.setpoint) < 5.0);
 
     /**
      * Builds a command that continuously aims and shoots while held.

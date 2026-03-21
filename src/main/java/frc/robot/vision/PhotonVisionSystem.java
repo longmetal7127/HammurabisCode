@@ -171,12 +171,15 @@ public class PhotonVisionSystem {
                 var estimates = new ArrayList<LoggableRobotPose>();
 
                 for (var result : allResults) {
-                    var estimate = cam.estimator.estimateCoprocMultiTagPose(result);
-                    if (estimate.isEmpty()) {
-                        estimate = cam.estimator.estimateLowestAmbiguityPose(result);
+                    var estimateOpt = cam.estimator.estimateCoprocMultiTagPose(result);
+                    if (estimateOpt.isEmpty()) {
+                        estimateOpt = cam.estimator.estimateLowestAmbiguityPose(result);
                     }
-                    estimate.ifPresent(val -> estimates.add(
-                        new LoggableRobotPose(val.estimatedPose, val.timestampSeconds)));
+                    estimateOpt.ifPresent(val -> {
+                        int[] tagIds = val.targetsUsed.stream().mapToInt(t -> t.getFiducialId()).toArray();
+                        estimates.add(
+                            new LoggableRobotPose(val.estimatedPose, val.timestampSeconds, tagIds, val.strategy));
+                    });
                 }
 
                 cam.poses = estimates.toArray(new LoggableRobotPose[0]);

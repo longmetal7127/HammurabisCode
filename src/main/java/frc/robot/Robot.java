@@ -49,7 +49,6 @@ import frc.robot.subsystems.Lintake;
 import frc.robot.subsystems.Shooter;
 import frc.robot.subsystems.Spindexer;
 import frc.robot.subsystems.Spindexer.SpindexerSetpoint;
-import frc.robot.util.ChoreoVars;
 import frc.robot.util.CommandGamesirController;
 import frc.robot.util.FuelSim;
 import frc.robot.vision.CameraConfig;
@@ -102,15 +101,15 @@ public class Robot extends TimedRobot {
                         () -> drivetrain.getState().Pose,
                         new CameraConfig("back-left", new Transform3d(
                                         new Translation3d(Inches.of(-12.895), Inches.of(10.918), Inches.of(9.224)),
-                                        new Rotation3d(0, Math.toRadians(-55), Math.toRadians(150)))),
+                                        new Rotation3d(0, Math.toRadians(-35), Math.toRadians(150)))),
                         new CameraConfig("back-right", new Transform3d(
                                         new Translation3d(Inches.of(-12.895), Inches.of(-10.918), Inches.of(9.224)),
-                                        new Rotation3d(0, Math.toRadians(-55), Math.toRadians(-150)))),
+                                        new Rotation3d(0, Math.toRadians(-35), Math.toRadians(-150)))),
                         new CameraConfig("left-side", new Transform3d(
                                         new Translation3d(Inches.of(1.105), Inches.of(12.174), Inches.of(8.177)),
                                         new Rotation3d(0, Math.toRadians(-35), Math.toRadians(90)))),
                         new CameraConfig("right-side", new Transform3d(
-                                        new Translation3d(Inches.of(-4.187), Inches.of(-10.805), Inches.of(10.177)),
+                                        new Translation3d(Inches.of(-4.187), Inches.of(-10.805), Inches.of(10.677)),
                                         new Rotation3d(Degrees.of(0), Degrees.of(-35), Degrees.of(-90))
 
                         )));
@@ -190,10 +189,10 @@ public class Robot extends TimedRobot {
 
                 autoFactory = drivetrain.createAutoFactory();
 
-                autoFactory.bind("IntakeStart", Commands.runOnce(() -> {
+                autoFactory.bind("StartIntake", Commands.runOnce(() -> {
                         lintake.setVelocity(0.6);
                 }));
-                autoFactory.bind("IntakeStop", Commands.runOnce(() -> {
+                autoFactory.bind("StopIntake", Commands.runOnce(() -> {
                         lintake.setVelocity(0);
                 }));
 
@@ -233,7 +232,7 @@ public class Robot extends TimedRobot {
                                 ));
 
                 shooter.setDefaultCommand(
-                                shooter.buildShootCommand(Commands.none(), Commands.none(), ShooterMode.Autoaim, true));
+                                shooter.buildShootCommand(Commands.none(), Commands.none(), ShooterMode.Autoaim, true, null));
                 // Idle while the robot is disabled. This ensures the configured
                 // neutral mode is applied to the drive motors while disabled.
                 final var idle = new SwerveRequest.Idle();
@@ -257,7 +256,7 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index),
-                                                ShooterMode.AgainstHub, false));
+                                                ShooterMode.AgainstHub, false,null));
 
                 joystick.leftTrigger().whileTrue(
                                 Commands.sequence(
@@ -293,12 +292,12 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                                false));
+                                                false,null));
                 joystick.y().whileTrue(
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Pass,
-                                                false));
+                                                false,null));
 
                 operatorJoystick.b().onTrue(lintake.zeroingRoutine());
                 operatorJoystick.a().whileTrue(
@@ -421,7 +420,7 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false)
+                                        false, spindexer)
                                         .alongWith(lintake.oscillateIntake())
                                         .alongWith(drivetrain.applyRequest(() -> brake))
                                         .withTimeout(4),
@@ -451,7 +450,7 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false)
+                                        false, spindexer)
                                         .alongWith(lintake.oscillateIntake())
                                         .alongWith(drivetrain.applyRequest(() -> brake))
                                         .withTimeout(4),
@@ -461,7 +460,7 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false)
+                                        false, spindexer)
                                         .alongWith(lintake.oscillateIntake())
                                         .alongWith(drivetrain.applyRequest(() -> brake))
                                         .withTimeout(4),
@@ -489,7 +488,7 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false)
+                                        false, spindexer)
                                         .alongWith(lintake.oscillateIntake())
                                         .alongWith(drivetrain.applyRequest(() -> brake))
                                         .withTimeout(4),
@@ -519,7 +518,7 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false)
+                                        false, spindexer)
                                         .alongWith(lintake.oscillateIntake())
                                         .alongWith(drivetrain.applyRequest(() -> brake))
                                         .withTimeout(4),
@@ -529,7 +528,7 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false)
+                                        false, spindexer)
                                         .alongWith(lintake.oscillateIntake())
                                         .alongWith(drivetrain.applyRequest(() -> brake))
                                         .withTimeout(4),
@@ -559,7 +558,7 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false)
+                                        false, spindexer)
                                         .alongWith(lintake.oscillateIntake())
                                         .alongWith(drivetrain.applyRequest(() -> brake))
                                         .withTimeout(4),
@@ -569,7 +568,7 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false)
+                                        false, spindexer)
                                         .alongWith(lintake.oscillateIntake())
                                         .alongWith(drivetrain.applyRequest(() -> brake))
                                         .withTimeout(4),
@@ -597,7 +596,7 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false)
+                                        false, spindexer)
                                         .alongWith(lintake.oscillateIntake())
                                         .alongWith(drivetrain.applyRequest(() -> brake))
                                         .withTimeout(4),
@@ -611,7 +610,7 @@ public class Robot extends TimedRobot {
                         shooter.buildShootCommand(
                                         spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                         indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false)
+                                        false, spindexer)
                                         .until(initialGrabPath.atTime("StopPassing")));
                 return routine;
         }
@@ -625,7 +624,7 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index),
-                                                ShooterMode.Autoaim, false)
+                                                ShooterMode.Autoaim, false, spindexer)
                                                 .withTimeout(4),
                                 lintake.deployLintake(),
                                 Commands.waitSeconds(0.5),
@@ -633,7 +632,7 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index),
-                                                ShooterMode.Autoaim, false)
+                                                ShooterMode.Autoaim, false, spindexer)
                                                 .alongWith(lintake.oscillateIntake())
                                                 .withTimeout(4),
                                 

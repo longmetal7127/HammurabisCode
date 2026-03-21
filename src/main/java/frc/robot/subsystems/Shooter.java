@@ -56,6 +56,7 @@ public class Shooter extends SubsystemBase {
         Autoaim,
         Autonomous
     }
+
     private final Supplier<Pose2d> poseSupplier;
     private final Supplier<ChassisSpeeds> fieldRelativeSpeedsSupplier;
     private final FuelSim fuelSim;
@@ -152,10 +153,11 @@ public class Shooter extends SubsystemBase {
                 ? new Translation2d(hub.getX(), hub.getY())
                 : getClosestAllianceZoneCorner();
         ChassisSpeeds speeds = fieldRelativeSpeedsSupplier.get();
-        
-        // Pass the robot-relative offset to the calculator so it handles the omega*r math itself
+
+        // Pass the robot-relative offset to the calculator so it handles the omega*r
+        // math itself
         ShootOnTheFlyCalculator activeCalculator = isInAllianceZone() ? sotfCalculator : passingSotfCalculator;
-        
+
         ShootOnTheFlyCalculator.ShooterCommand cmd = activeCalculator.calculate(
                 robotPose.getTranslation(),
                 robotPose.getRotation(),
@@ -172,13 +174,12 @@ public class Shooter extends SubsystemBase {
      */
     private static ShootOnTheFlyCalculator buildSOTFCalculator() {
         ShootOnTheFlyCalculator calc = new ShootOnTheFlyCalculator();
-        calc.addTableEntry(1.127, 1800, 4.4, 1.20648052);
-        calc.addTableEntry(2.111, 32*60, 9.5, 1.16666667);
-        calc.addTableEntry(3.002, 33*60, 13, 1.27542227);
-        calc.addTableEntry(4.001, 36*60, 17, 1.41330576);
+        calc.addTableEntry(1.127, 1800, 4.4, 1.11666667);
+        calc.addTableEntry(2.111, 32 * 60, 9.5, 1.23333333);
+        calc.addTableEntry(3.002, 33 * 60, 13, 1.3);
+        calc.addTableEntry(4.001, 36 * 60, 17, 1.33333334);
         calc.addTableEntry(4.977, 2298, 25, 1.292);
-        calc.addTableEntry(5.980, 41*60, 30, 1.292);
-
+        calc.addTableEntry(5.980, 41 * 60, 30, 1.21829105);
 
         return calc;
     }
@@ -224,14 +225,13 @@ public class Shooter extends SubsystemBase {
         fuelSim.launchFuel(
                 MetersPerSecond.of(exitSpeedMps),
                 Radians.of(hoodPitchRad),
-                Radians.of(turretYawRad-Math.PI / 2),
+                Radians.of(turretYawRad - Math.PI / 2),
                 Inches.of(22)); // launch height — above bumper height
     }
 
     // ── Commands ─────────────────────────────────────────────────────────
-        public Trigger readyToShoot = new Trigger(() -> 
-                flywheel.isNearTarget(RotationsPerSecond.of(10)) 
-                && Math.abs(turret.getAngleDegrees() - turret.setpoint) < 5.0);
+    public Trigger readyToShoot = new Trigger(() -> flywheel.isNearTarget(RotationsPerSecond.of(10))
+            && Math.abs(turret.getAngleDegrees() - turret.setpoint) < 5.0);
 
     /**
      * Builds a command that continuously aims and shoots while held.
@@ -247,9 +247,8 @@ public class Shooter extends SubsystemBase {
      * @return The shoot command (requires this Shooter subsystem)
      */
     public Command buildShootCommand(Command spindexerFeedCommand, Command indexerFeedCommand,
-            ShooterMode shooterMode, boolean turretOnly) {
-        
-        
+            ShooterMode shooterMode, boolean turretOnly, Spindexer spindexer) {
+
         return runEnd(() -> {
             var cmd = getCurrentSOTFCommand();
 
@@ -273,7 +272,7 @@ public class Shooter extends SubsystemBase {
                     rpm = FlywheelSetpoint.Autonomous.leaderMotorTarget.in(RotationsPerSecond);
                     break;
                 case Autoaim: {
-                    hoodAngleDeg = cmd.hoodAngle(); //hoodAngleOffsetDeg.get();
+                    hoodAngleDeg = cmd.hoodAngle(); // hoodAngleOffsetDeg.get();
                     // Turret: continuously track the SOTF turret angle (robot-relative)
                     turretAngleDeg = cmd.turretAngle()
                             .minus(poseSupplier.get().getRotation())
@@ -285,8 +284,9 @@ public class Shooter extends SubsystemBase {
                 hood.setAngle(hoodAngleDeg);
                 flywheel.setTarget(rpm);
             }
-            
-            double turretFFRadPerSec = (shooterMode == ShooterMode.Autoaim) ? cmd.turretAngularVelocityFFRadPerSec() : 0.0;
+
+            double turretFFRadPerSec = (shooterMode == ShooterMode.Autoaim) ? cmd.turretAngularVelocityFFRadPerSec()
+                    : 0.0;
             turret.setAngle(robotRelativeToTurretSetpointDeg(turretAngleDeg), turretFFRadPerSec);
         }, () -> {
             hood.setAngle(0);
@@ -303,6 +303,34 @@ public class Shooter extends SubsystemBase {
                                 ).until(() -> !readyToShoot.getAsBoolean())
                         ).repeatedly()
         ).withName("Shoot");
+        /* //automatically reversing spindexer if it jams
+                        .andThen(Commands.either(
+                                Commands.sequence(
+                                        // Reset spawn timer so the first fuel fires immediately
+                                        Commands.runOnce(() -> fuelSpawnTimer.restart()),
+                                        Commands.parallel(
+                                                spindexerFeedCommand,
+                                                indexerFeedCommand,
+                                                // Periodically spawn simulated fuel while feeding
+                                                Commands.run(this::trySpawnSimulatedFuel))
+                                                .until(() -> !readyToShoot.getAsBoolean()))
+                                        .repeatedly(),
+                                Commands.sequence(
+                                        Commands.sequence(
+                                                // Reset spawn timer so the first fuel fires immediately
+                                                Commands.runOnce(() -> fuelSpawnTimer.restart()),
+                                                Commands.parallel(
+                                                        spindexerFeedCommand,
+                                                        indexerFeedCommand,
+                                                        // Periodically spawn simulated fuel while feeding
+                                                        Commands.run(this::trySpawnSimulatedFuel))
+                                                        .until(() -> !readyToShoot.getAsBoolean()))
+                                                .until(spindexer.spindexerJamming),
+                                        spindexer.setTargetTemporary(Spindexer.SpindexerSetpoint.SpinReverse)
+                                                .withTimeout(1))
+                                        .repeatedly(),
+                                () -> (spindexer.equals(null)))))
+                .withName("Shoot");*/
     }
 
     /**
@@ -449,7 +477,7 @@ public class Shooter extends SubsystemBase {
     public boolean isFlywheelNearTarget(AngularVelocity threshold) {
         return flywheel.isNearTarget(threshold);
     }
-    
+
     public final SysIdRoutine m_sysIdRoutine = new SysIdRoutine(
             new SysIdRoutine.Config(
                     null, // Use default ramp rate (1 V/s)
@@ -469,7 +497,7 @@ public class Shooter extends SubsystemBase {
     public Command sysIdDynamic(SysIdRoutine.Direction direction) {
         return m_sysIdRoutine.dynamic(direction);
     }
-    
+
     public Command runReverse() {
         return Commands.runOnce(() -> {
             flywheel.setTarget(FlywheelSetpoint.Outtake.leaderMotorTarget.in(RotationsPerSecond));

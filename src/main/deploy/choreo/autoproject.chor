@@ -7,6 +7,34 @@
   "poses":{
    "HandoffLeft":{
     "x":{
+     "exp":"3.5 m",
+     "val":3.5
+    },
+    "y":{
+     "exp":"7.375 m",
+     "val":7.375
+    },
+    "heading":{
+     "exp":"0 rad",
+     "val":0.0
+    }
+   },
+   "HandoffRight":{
+    "x":{
+     "exp":"3.5 m",
+     "val":3.5
+    },
+    "y":{
+     "exp":"0.65 m",
+     "val":0.65
+    },
+    "heading":{
+     "exp":"0 rad",
+     "val":0.0
+    }
+   },
+   "StartLeft":{
+    "x":{
      "exp":"4 m",
      "val":4.0
     },
@@ -19,7 +47,7 @@
      "val":0.0
     }
    },
-   "HandoffRight":{
+   "StartRight":{
     "x":{
      "exp":"4 m",
      "val":4.0

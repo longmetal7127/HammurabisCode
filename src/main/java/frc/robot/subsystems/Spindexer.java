@@ -21,6 +21,7 @@ import edu.wpi.first.wpilibj.simulation.RoboRioSim;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.subsystems.Flywheel.FlywheelSetpoint;
 
@@ -307,4 +308,7 @@ public class Spindexer extends SubsystemBase {
           setTargetTemporary(SpindexerSetpoint.SpinReverse);
       });
   }
+
+  public Trigger spindexerJamming = new Trigger(
+    () -> ((getTargetVelocityRPM() > 500.0)&&(getVelocityRPM()<100.0)));
 }

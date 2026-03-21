@@ -361,7 +361,7 @@ public class Lintake extends SubsystemBase {
         setHeightCommand(getMaxHeightMeters())
             .until(() -> (Math.abs(getPosition() - getMaxHeightMeters()) <= 0.02)),
       runReverse(),
-      Commands.waitSeconds(1),
+      Commands.waitSeconds(0.5),
       stopCommand());
   }
 
@@ -378,8 +378,8 @@ public class Lintake extends SubsystemBase {
     return setHeightCommand(0.1)
       .andThen(run(() -> {
         if(Math.abs(getPosition() - 0.1) <= 0.02) {
-          setPosition(getMaxHeightMeters()/2);
-        } else if(Math.abs(getPosition() - getMaxHeightMeters()/2) <= 0.02) { 
+          setPosition(getMaxHeightMeters());
+        } else if(Math.abs(getPosition() - getMaxHeightMeters()) <= 0.02) { 
           setPosition(0.1);
         }
       }));

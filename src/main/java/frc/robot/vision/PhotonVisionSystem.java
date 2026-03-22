@@ -177,8 +177,10 @@ public class PhotonVisionSystem {
                     }
                     estimateOpt.ifPresent(val -> {
                         int[] tagIds = val.targetsUsed.stream().mapToInt(t -> t.getFiducialId()).toArray();
-                        estimates.add(
-                            new LoggableRobotPose(val.estimatedPose, val.timestampSeconds, tagIds, val.strategy));
+                        if (val.estimatedPose.getZ() < 0.6) {
+                            estimates.add(
+                                new LoggableRobotPose(val.estimatedPose, val.timestampSeconds, tagIds, val.strategy));
+                        }
                     });
                 }
 

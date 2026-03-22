@@ -68,7 +68,6 @@ public class Lintake extends SubsystemBase {
   private final SparkSim motorSim;
   private final SparkClosedLoopController sparkPidController;
 
-
   private final SparkMax intakeWheelMotor;
   private final SparkClosedLoopController sparkWheelPidController;
 
@@ -328,10 +327,11 @@ public class Lintake extends SubsystemBase {
     // Create pose with translation and rotation
     // Assuming intake base is at front center of robot
     return new Pose3d(
-        new Translation3d(-currentHeightMeters, 0, 0).rotateBy(new Rotation3d(0, Math.toRadians(tiltAngleDegrees), Math.PI)), // Base
-                                                                                                                        // position
-                                                                                                                        // +
-                                                                                                                        // extension
+        new Translation3d(-currentHeightMeters, 0, 0)
+            .rotateBy(new Rotation3d(0, Math.toRadians(tiltAngleDegrees), Math.PI)), // Base
+        // position
+        // +
+        // extension
         new Rotation3d(Math.PI * 0.5, 0, Math.PI));
   }
 
@@ -358,11 +358,10 @@ public class Lintake extends SubsystemBase {
 
   public Command deployLintake() {
     return Commands.sequence(
-        setHeightCommand(getMaxHeightMeters())
-            .until(() -> (Math.abs(getPosition() - getMaxHeightMeters()) <= 0.02)),
-      runReverse(),
-      Commands.waitSeconds(0.5),
-      stopCommand());
+        setHeightCommand(getMaxHeightMeters()),
+        Commands.waitUntil(() -> (Math.abs(getPosition() - getMaxHeightMeters()) <= 0.02)),
+        runReverse()
+        );
   }
 
   /**
@@ -376,13 +375,13 @@ public class Lintake extends SubsystemBase {
    */
   public Command oscillateIntake() {
     return setHeightCommand(0.1)
-      .andThen(run(() -> {
-        if(Math.abs(getPosition() - 0.1) <= 0.02) {
-          setPosition(getMaxHeightMeters());
-        } else if(Math.abs(getPosition() - getMaxHeightMeters()) <= 0.02) { 
-          setPosition(0.1);
-        }
-      }));
+        .andThen(run(() -> {
+          if (Math.abs(getPosition() - 0.1) <= 0.02) {
+            setPosition(getMaxHeightMeters());
+          } else if (Math.abs(getPosition() - getMaxHeightMeters()) <= 0.02) {
+            setPosition(0.1);
+          }
+        }));
   }
 
 }

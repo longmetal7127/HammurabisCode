@@ -253,8 +253,8 @@ public class Lintake extends SubsystemBase {
   public void setVelocity(double velocity, double acceleration) {
     // Encoder units are already m/s, pass directly
     sparkWheelPidController.setSetpoint(
-        velocity,
-        ControlType.kDutyCycle,
+        velocity * 12,
+        ControlType.kVoltage,
         ClosedLoopSlot.kSlot0);
   }
 

@@ -207,6 +207,7 @@ public class Robot extends TimedRobot {
                 autoChooser.addRoutine("Shoot into Hub", this::shootIntoHub);
 
                 SmartDashboard.putData("Auto Chooser", autoChooser);
+                CommandScheduler.getInstance().schedule(preheatCommand());
 
         }
 
@@ -353,7 +354,10 @@ public class Robot extends TimedRobot {
         @Override
         public void disabledExit() {
         }
+        public Command preheatCommand() {
+                return autoFactory.trajectoryCmd("Preheat").withTimeout(1).ignoringDisable(true);
 
+        }
         @Override
         public void autonomousInit() {
                 m_autonomousCommand = getAutonomousCommand();

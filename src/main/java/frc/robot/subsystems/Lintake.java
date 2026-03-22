@@ -126,7 +126,7 @@ public class Lintake extends SubsystemBase {
     sparkWheelPidController = intakeWheelMotor.getClosedLoopController();
     SparkFlexConfig wheelConfig = new SparkFlexConfig();
     wheelConfig.idleMode(IdleMode.kBrake);
-    wheelConfig.smartCurrentLimit(40);
+    wheelConfig.smartCurrentLimit(48);
     wheelConfig.closedLoop
         .feedbackSensor(FeedbackSensor.kPrimaryEncoder)
         .pid(0.1, 0, 0, ClosedLoopSlot.kSlot0)

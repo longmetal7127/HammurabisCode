@@ -20,6 +20,7 @@ import com.ctre.phoenix6.Utils;
 
 import edu.wpi.first.apriltag.AprilTagFieldLayout;
 import edu.wpi.first.apriltag.AprilTagFields;
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -32,35 +33,37 @@ import edu.wpi.first.networktables.StructPublisher;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
+import frc.robot.FieldConstants;
 import frc.robot.Robot;
 
 public class PhotonVisionSystem {
     final AprilTagFieldLayout TagLayout = AprilTagFieldLayout.loadField(AprilTagFields.k2026RebuiltAndymark);
-    /* IDs 3,4 and 19,20 are on the side of the hub that we can't shoot from, so don't include them */
-    private final int[] RedHubApriltagIds = new int[]{
-        2, /* 3, 4, */ 5, 8, 9, 10, 11
+    /*
+     * IDs 3,4 and 19,20 are on the side of the hub that we can't shoot from, so
+     * don't include them
+     */
+    private final int[] RedHubApriltagIds = new int[] {
+            2, /* 3, 4, */ 5, 8, 9, 10, 11
     };
-    private final int[] BlueHubApriltagIds = new int[]{
-        18, /* 19, 20, */ 21, 24, 25, 26, 27
+    private final int[] BlueHubApriltagIds = new int[] {
+            18, /* 19, 20, */ 21, 24, 25, 26, 27
     };
 
     private final ApriltagTarget RedHub = new ApriltagTarget(Map.of(
-        2, new Translation3d(Inches.of(-23.5), Inches.of(0), Inches.of(33)),
-        5, new Translation3d(Inches.of(-23.5), Inches.of(0), Inches.of(33)),
-        8, new Translation3d(Inches.of(-23.5), Inches.of(-14), Inches.of(33)),
-        9, new Translation3d(Inches.of(-23.5), Inches.of(14), Inches.of(33)),
-        10, new Translation3d(Inches.of(-23.5), Inches.of(0), Inches.of(33)),
-        11, new Translation3d(Inches.of(-23.5), Inches.of(14), Inches.of(33))
-    ));
+            2, new Translation3d(Inches.of(-23.5), Inches.of(0), Inches.of(33)),
+            5, new Translation3d(Inches.of(-23.5), Inches.of(0), Inches.of(33)),
+            8, new Translation3d(Inches.of(-23.5), Inches.of(-14), Inches.of(33)),
+            9, new Translation3d(Inches.of(-23.5), Inches.of(14), Inches.of(33)),
+            10, new Translation3d(Inches.of(-23.5), Inches.of(0), Inches.of(33)),
+            11, new Translation3d(Inches.of(-23.5), Inches.of(14), Inches.of(33))));
 
     private final ApriltagTarget BlueHub = new ApriltagTarget(Map.of(
-        18, new Translation3d(Inches.of(-23.5), Inches.of(0), Inches.of(33)),
-        21, new Translation3d(Inches.of(-23.5), Inches.of(0), Inches.of(33)),
-        24, new Translation3d(Inches.of(-23.5), Inches.of(-14), Inches.of(33)),
-        25, new Translation3d(Inches.of(-23.5), Inches.of(14), Inches.of(33)),
-        26, new Translation3d(Inches.of(-23.5), Inches.of(0), Inches.of(33)),
-        27, new Translation3d(Inches.of(-23.5), Inches.of(14), Inches.of(33))
-    ));
+            18, new Translation3d(Inches.of(-23.5), Inches.of(0), Inches.of(33)),
+            21, new Translation3d(Inches.of(-23.5), Inches.of(0), Inches.of(33)),
+            24, new Translation3d(Inches.of(-23.5), Inches.of(-14), Inches.of(33)),
+            25, new Translation3d(Inches.of(-23.5), Inches.of(14), Inches.of(33)),
+            26, new Translation3d(Inches.of(-23.5), Inches.of(0), Inches.of(33)),
+            27, new Translation3d(Inches.of(-23.5), Inches.of(14), Inches.of(33))));
 
     /**
      * Per-camera runtime state. Each camera has its own PhotonCamera, estimator,
@@ -77,8 +80,8 @@ public class PhotonVisionSystem {
         LoggableRobotPose[] poses = new LoggableRobotPose[0];
         double timeOfLastTrackedHubTarget = 0;
         PhotonTrackedTarget lastTrackedHubTarget = new PhotonTrackedTarget(
-            0, 0, 0, 0, -1, -1, 0, Transform3d.kZero, Transform3d.kZero, 0,
-            new ArrayList<TargetCorner>(), new ArrayList<TargetCorner>());
+                0, 0, 0, 0, -1, -1, 0, Transform3d.kZero, Transform3d.kZero, 0,
+                new ArrayList<TargetCorner>(), new ArrayList<TargetCorner>());
         Pose3d hubTarget = Pose3d.kZero;
         Rotation2d hubHeading = Rotation2d.kZero;
 
@@ -90,24 +93,29 @@ public class PhotonVisionSystem {
             this.robotToCamera = config.robotToCamera();
             this.estimator = new PhotonPoseEstimator(tagLayout, config.robotToCamera());
 
-            /* Each camera gets its own log namespace so they can be reviewed independently */
+            /*
+             * Each camera gets its own log namespace so they can be reviewed independently
+             */
             this.autoReplay = new HootAutoReplay()
-                .withStructArray(name + "/PoseEstimations", LoggableRobotPose.struct,
-                    () -> poses, val -> poses = val.value)
-                .withStruct(name + "/HubTarget", Pose3d.struct,
-                    () -> hubTarget, val -> hubTarget = val.value)
-                .withStruct(name + "/HubHeading", Rotation2d.struct,
-                    () -> hubHeading, val -> hubHeading = val.value)
-                .withProtobuf(name + "/LastTrackedHubTarget", PhotonTrackedTarget.proto,
-                    () -> lastTrackedHubTarget, val -> lastTrackedHubTarget = val.value)
-                .withDouble(name + "/LastTrackedHubTargetTime",
-                    () -> timeOfLastTrackedHubTarget, val -> timeOfLastTrackedHubTarget = val.value);
+                    .withStructArray(name + "/PoseEstimations", LoggableRobotPose.struct,
+                            () -> poses, val -> poses = val.value)
+                    .withStruct(name + "/HubTarget", Pose3d.struct,
+                            () -> hubTarget, val -> hubTarget = val.value)
+                    .withStruct(name + "/HubHeading", Rotation2d.struct,
+                            () -> hubHeading, val -> hubHeading = val.value)
+                    .withProtobuf(name + "/LastTrackedHubTarget", PhotonTrackedTarget.proto,
+                            () -> lastTrackedHubTarget, val -> lastTrackedHubTarget = val.value)
+                    .withDouble(name + "/LastTrackedHubTargetTime",
+                            () -> timeOfLastTrackedHubTarget, val -> timeOfLastTrackedHubTarget = val.value);
         }
     }
 
     private final CameraState[] cameras;
 
-    /* Use the current robot heading to keep track of where to target when aiming for the hub */
+    /*
+     * Use the current robot heading to keep track of where to target when aiming
+     * for the hub
+     */
     Supplier<Pose2d> currentRobotPose;
     Consumer<LoggableRobotPose> poseConsumer;
 
@@ -119,21 +127,25 @@ public class PhotonVisionSystem {
     VisionSystemSim visionSim = new VisionSystemSim("Camera Sim");
 
     private final NetworkTable cameraTable = NetworkTableInstance.getDefault().getTable("CameraDetails");
-    private final StructPublisher<Pose3d> hubTargetPublisher = cameraTable.getStructTopic("HubTarget", Pose3d.struct).publish();
-    private final StructPublisher<Rotation2d> hubHeadingPublisher = cameraTable.getStructTopic("HubHeading", Rotation2d.struct).publish();
+    private final StructPublisher<Pose3d> hubTargetPublisher = cameraTable.getStructTopic("HubTarget", Pose3d.struct)
+            .publish();
+    private final StructPublisher<Rotation2d> hubHeadingPublisher = cameraTable
+            .getStructTopic("HubHeading", Rotation2d.struct).publish();
     private final StructArrayPublisher<Pose3d> cameraOffsetPublisher = cameraTable
-        .getStructArrayTopic("Offsets", Pose3d.struct)
-        .publish();
+            .getStructArrayTopic("Offsets", Pose3d.struct)
+            .publish();
     private final Pose3d[] cameraOffsetPoses;
 
     /**
      * Create a multi-camera vision system.
-     * @param poseConsumer Called with each robot pose estimate from any camera
+     * 
+     * @param poseConsumer     Called with each robot pose estimate from any camera
      * @param currentRobotPose Supplier for the current robot pose (from drivetrain)
-     * @param configs One CameraConfig per physical camera (name + transform)
+     * @param configs          One CameraConfig per physical camera (name +
+     *                         transform)
      */
     public PhotonVisionSystem(Consumer<LoggableRobotPose> poseConsumer, Supplier<Pose2d> currentRobotPose,
-                              CameraConfig... configs) {
+            CameraConfig... configs) {
         this.poseConsumer = poseConsumer;
         this.currentRobotPose = currentRobotPose;
 
@@ -147,7 +159,7 @@ public class PhotonVisionSystem {
         cameraOffsetPublisher.set(cameraOffsetPoses);
 
         // ----- Simulation
-        if (Robot.isSimulation() ) {
+        if (Robot.isSimulation()) {
             visionSim = new VisionSystemSim("main");
             visionSim.addAprilTags(TagLayout);
             for (CameraState cam : cameras) {
@@ -159,7 +171,6 @@ public class PhotonVisionSystem {
     }
 
     public void periodic() {
-
 
         double bestAmbiguityThisCycle = Double.MAX_VALUE;
         PhotonTrackedTarget bestHubTargetThisCycle = null;
@@ -177,9 +188,46 @@ public class PhotonVisionSystem {
                     }
                     estimateOpt.ifPresent(val -> {
                         int[] tagIds = val.targetsUsed.stream().mapToInt(t -> t.getFiducialId()).toArray();
+                        if (Math.abs(val.estimatedPose.getZ()) > .025) {
+                            return;
+
+                        }
+                        if (val.estimatedPose.getX() < 0
+                                || val.estimatedPose.getX() > FieldConstants.fieldWidth) {
+                            return;
+                        }
+                        if (val.estimatedPose.getY() < 0
+                                || val.estimatedPose.getY() > FieldConstants.fieldWidth) {
+                            return;
+                        }
+                        double maxAmbiguity = .4;
+                        if (val.targetsUsed.size() == 1 && val.targetsUsed.get(0).poseAmbiguity > maxAmbiguity) {
+                            return;
+                        }
+
+                        double translationalScoresSum = 0;
+                        double angularScoresSum = 0;
+                        for (var tag : val.targetsUsed) {
+                            var tagDistance = tag.bestCameraToTarget.getTranslation().getNorm();
+
+                            translationalScoresSum += .4 * tagDistance * tagDistance;
+                            angularScoresSum += .2 * tagDistance * tagDistance;
+                        }
+
+                        // Heavily distrust single tag observations
+                        if (val.targetsUsed.size() == 1) {
+                            var scale = val.targetsUsed.get(0).poseAmbiguity / maxAmbiguity;
+                            translationalScoresSum *= MathUtil.interpolate(10, 50, scale);
+                            angularScoresSum *= MathUtil.interpolate(25, 100, scale);
+                        }
+
+                        var translationalDivisor = Math.pow(val.targetsUsed.size(), 1.5);
+                        var angularDivisor = Math.pow(val.targetsUsed.size(), 3);
+                        
                         if (val.estimatedPose.getZ() < 0.6) {
                             estimates.add(
-                                new LoggableRobotPose(val.estimatedPose, val.timestampSeconds, tagIds, val.strategy));
+                                    new LoggableRobotPose(val.estimatedPose, val.timestampSeconds, tagIds,
+                                            val.strategy, translationalScoresSum / translationalDivisor, angularScoresSum / angularDivisor));
                         }
                     });
                 }
@@ -194,7 +242,6 @@ public class PhotonVisionSystem {
             }
         }
 
-       
         hubTargetPublisher.accept(hubTarget);
         hubHeadingPublisher.accept(hubHeading);
         cameraOffsetPublisher.set(cameraOffsetPoses);
@@ -206,7 +253,8 @@ public class PhotonVisionSystem {
 
     /** A Field2d for visualizing our robot and objects on the field. */
     public Field2d getSimDebugField() {
-        if (!Robot.isSimulation()) return null;
+        if (!Robot.isSimulation())
+            return null;
         return visionSim.getDebugField();
     }
 

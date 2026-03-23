@@ -12,10 +12,15 @@ public class LoggableRobotPose {
     public final double timestampSeconds;
     public final int[] tagIds;
     public final PoseStrategy strategy;
-    
-    public LoggableRobotPose(Pose3d estimatedPose, double timestampSeconds, int[] tagIds, PoseStrategy strategy) {
+    public final double translationalScore;
+    public final double angularScore;
+
+    public LoggableRobotPose(Pose3d estimatedPose, double timestampSeconds, int[] tagIds, PoseStrategy strategy,
+            double translationalScore, double angularScore) {
         this.estimatedPose = estimatedPose;
         this.timestampSeconds = timestampSeconds;
+        this.translationalScore = translationalScore;
+        this.angularScore = angularScore;
         this.tagIds = new int[8];
         Arrays.fill(this.tagIds, -1);
         if (tagIds != null) {
@@ -26,7 +31,6 @@ public class LoggableRobotPose {
 
     public static final LoggableRobotPoseStruct struct = new LoggableRobotPoseStruct();
 
-    
     public static class LoggableRobotPoseStruct implements Struct<LoggableRobotPose> {
         @Override
         public Class<LoggableRobotPose> getTypeClass() {
@@ -40,17 +44,17 @@ public class LoggableRobotPose {
 
         @Override
         public int getSize() {
-            return Pose3d.struct.getSize() + kSizeDouble + 8 * kSizeInt32 + kSizeInt8;
+            return Pose3d.struct.getSize() + kSizeDouble + 8 * kSizeInt32 + kSizeInt8 + kSizeDouble + kSizeDouble;
         }
 
         @Override
         public String getSchema() {
-            return "Pose3d estimatedPose;double timestampSeconds;int32 tagIds[8];int8 strategy";
+            return "Pose3d estimatedPose;double timestampSeconds;int32 tagIds[8];int8 strategy;double translationalScore;double angularScore;";
         }
 
         @Override
         public Struct<?>[] getNested() {
-            return new Struct<?>[] {Pose3d.struct};
+            return new Struct<?>[] { Pose3d.struct };
         }
 
         @Override
@@ -66,7 +70,10 @@ public class LoggableRobotPose {
             if (strategyOrdinal >= 0 && strategyOrdinal < PoseStrategy.values().length) {
                 st = PoseStrategy.values()[strategyOrdinal];
             }
-            return new LoggableRobotPose(pose, time, tags, st);
+            double translationalScore = bb.getDouble();
+            double angularScore = bb.getDouble();
+
+            return new LoggableRobotPose(pose, time, tags, st, translationalScore, angularScore);
         }
 
         @Override
@@ -77,6 +84,8 @@ public class LoggableRobotPose {
                 bb.putInt(value.tagIds[i]);
             }
             bb.put((byte) (value.strategy != null ? value.strategy.ordinal() : 0));
+            bb.putDouble(value.translationalScore);
+            bb.putDouble(value.angularScore);
         }
 
         @Override

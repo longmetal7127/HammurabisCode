@@ -25,10 +25,14 @@ import edu.wpi.first.epilogue.Logged;
 import edu.wpi.first.epilogue.logging.EpilogueBackend;
 import edu.wpi.first.epilogue.logging.NTEpilogueBackend;
 import edu.wpi.first.epilogue.logging.errors.ErrorHandler;
+import edu.wpi.first.math.Matrix;
+import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
+import edu.wpi.first.math.numbers.N1;
+import edu.wpi.first.math.numbers.N3;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.DataLogManager;
 import edu.wpi.first.wpilibj.TimedRobot;
@@ -146,16 +150,18 @@ public class Robot extends TimedRobot {
                 });
                 Epilogue.bind(this);
 
-                //CommandScheduler.getInstance().onCommandInitialize(CommandsLogging::commandStarted);
-                //CommandScheduler.getInstance().onCommandFinish(CommandsLogging::commandEnded);
-               /*  CommandScheduler.getInstance()
-                                .onCommandInterrupt(
-                                                (interrupted, interrupting) -> {
-                                                        interrupting.ifPresent(
-                                                                        interrupter -> CommandsLogging.runningInterrupters
-                                                                                        .put(interrupter, interrupted));
-                                                        CommandsLogging.commandEnded(interrupted);
-                                                });*/
+                // CommandScheduler.getInstance().onCommandInitialize(CommandsLogging::commandStarted);
+                // CommandScheduler.getInstance().onCommandFinish(CommandsLogging::commandEnded);
+                /*
+                 * CommandScheduler.getInstance()
+                 * .onCommandInterrupt(
+                 * (interrupted, interrupting) -> {
+                 * interrupting.ifPresent(
+                 * interrupter -> CommandsLogging.runningInterrupters
+                 * .put(interrupter, interrupted));
+                 * CommandsLogging.commandEnded(interrupted);
+                 * });
+                 */
 
                 // Initialize shooter after drivetrain so we can pass suppliers
                 shooter = new Shooter(
@@ -233,7 +239,8 @@ public class Robot extends TimedRobot {
                                 ));
 
                 shooter.setDefaultCommand(
-                                shooter.buildShootCommand(Commands.none(), Commands.none(), ShooterMode.Autoaim, true, null));
+                                shooter.buildShootCommand(Commands.none(), Commands.none(), ShooterMode.Autoaim, true,
+                                                null));
                 // Idle while the robot is disabled. This ensures the configured
                 // neutral mode is applied to the drive motors while disabled.
                 final var idle = new SwerveRequest.Idle();
@@ -257,7 +264,7 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index),
-                                                ShooterMode.AgainstHub, false,null));
+                                                ShooterMode.AgainstHub, false, null));
 
                 joystick.leftTrigger().whileTrue(
                                 Commands.sequence(
@@ -273,32 +280,33 @@ public class Robot extends TimedRobot {
 
                 joystick.leftBumper().onTrue(
                                 Commands.runOnce(() -> intakeMode = IntakeMode.A)
-                                        .alongWith(Commands.sequence(
-                                                lintake.setHeightCommand(0.1),
-                                                lintake.stopCommand())));
+                                                .alongWith(Commands.sequence(
+                                                                lintake.setHeightCommand(0.1),
+                                                                lintake.stopCommand())));
 
                 joystick.rightBumper().onTrue(
                                 Commands.runOnce(() -> intakeMode = IntakeMode.B));
 
                 // --- Tuning: while A is held, use DogLog tunables as absolute setpoints ---
-               /*  operatorJoystick.povUp().whileTrue(
-                                shooter.buildTuningCommand());
-
-                operatorJoystick.povDown().whileTrue(
-                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin).alongWith(
-                                                indexer.setTargetTemporary(IndexerSetpoint.Index)));
-*/
+                /*
+                 * operatorJoystick.povUp().whileTrue(
+                 * shooter.buildTuningCommand());
+                 * 
+                 * operatorJoystick.povDown().whileTrue(
+                 * spindexer.setTargetTemporary(SpindexerSetpoint.Spin).alongWith(
+                 * indexer.setTargetTemporary(IndexerSetpoint.Index)));
+                 */
                 // turret autoaim stuff
                 joystick.rightTrigger().whileTrue(
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                                false,null));
+                                                false, null));
                 joystick.y().whileTrue(
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Pass,
-                                                false,null));
+                                                false, null));
 
                 operatorJoystick.b().onTrue(lintake.zeroingRoutine());
                 operatorJoystick.a().whileTrue(
@@ -313,7 +321,7 @@ public class Robot extends TimedRobot {
                 operatorJoystick.x().onTrue(drivetrain.runOnce(() -> drivetrain.seedFieldCentric()));
 
                 // sysid
-               operatorJoystick.povLeft().whileTrue(drivetrain.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
+                operatorJoystick.povLeft().whileTrue(drivetrain.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
                 operatorJoystick.povUp().whileTrue(drivetrain.sysIdDynamic(SysIdRoutine.Direction.kForward));
                 operatorJoystick.povDown().whileTrue(drivetrain.sysIdQuasistatic(SysIdRoutine.Direction.kReverse));
                 operatorJoystick.povRight().whileTrue(drivetrain.sysIdDynamic(SysIdRoutine.Direction.kReverse));
@@ -323,7 +331,9 @@ public class Robot extends TimedRobot {
         }
 
         public void consumePhotonVisionMeasurement(LoggableRobotPose pose) {
-                drivetrain.addVisionMeasurement(pose.estimatedPose.toPose2d(), pose.timestampSeconds);
+                drivetrain.addVisionMeasurement(pose.estimatedPose.toPose2d(), pose.timestampSeconds,
+                                VecBuilder.fill(pose.translationalScore, pose.translationalScore, pose.angularScore));
+
         }
 
         public Command getAutonomousCommand() {
@@ -334,8 +344,8 @@ public class Robot extends TimedRobot {
         public void robotPeriodic() {
                 m_timeAndJoystickReplay.update();
                 CommandScheduler.getInstance().run();
-                //CommandsLogging.logRunningCommands();
-                //CommandsLogging.logRequiredSubsystems();
+                // CommandsLogging.logRunningCommands();
+                // CommandsLogging.logRequiredSubsystems();
                 vision.periodic();
                 logger.updateMechanismPoses(lintake.getMechanismPose(),
                                 shooter.getTurretMechanismPose(),
@@ -354,10 +364,12 @@ public class Robot extends TimedRobot {
         @Override
         public void disabledExit() {
         }
+
         public Command preheatCommand() {
                 return autoFactory.trajectoryCmd("Preheat").withTimeout(1).ignoringDisable(true);
 
         }
+
         @Override
         public void autonomousInit() {
                 m_autonomousCommand = getAutonomousCommand();
@@ -409,241 +421,256 @@ public class Robot extends TimedRobot {
 
         }
 
-        //take one swipes at mid and shoot
+        // take one swipes at mid and shoot
         public AutoRoutine oneSwipeRightSide() {
                 final AutoRoutine routine = autoFactory.newRoutine("OneSwipeRightSide");
                 final AutoTrajectory initialGrabPath = routine.trajectory("InitialGrab_RightSide");
-                
-                routine.active().onTrue(
-                        Commands.sequence(
-                                initialGrabPath.resetOdometry(),
 
-                                lintake.deployLintake(),
-                                Commands.waitSeconds(0.5),
-                                initialGrabPath.cmd(),
-                                shooter.buildShootCommand(
-                                        spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                        indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false, spindexer)
-                                        .alongWith(lintake.oscillateIntake())
-                                        .alongWith(drivetrain.applyRequest(() -> brake))
-                                        .withTimeout(4),
-                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
-                                
-                                lintake.setHeightCommand(0.1),
-                                lintake.stopCommand(),
-                                drivetrain.applyRequest(() -> idle),
-                                drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
-                
+                routine.active().onTrue(
+                                Commands.sequence(
+                                                initialGrabPath.resetOdometry(),
+
+                                                lintake.deployLintake(),
+                                                Commands.waitSeconds(0.5),
+                                                initialGrabPath.cmd(),
+                                                shooter.buildShootCommand(
+                                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
+                                                                ShooterMode.Autoaim,
+                                                                false, spindexer)
+                                                                .alongWith(lintake.oscillateIntake())
+                                                                .alongWith(drivetrain.applyRequest(() -> brake))
+                                                                .withTimeout(4),
+                                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
+
+                                                lintake.setHeightCommand(0.1),
+                                                lintake.stopCommand(),
+                                                drivetrain.applyRequest(() -> idle),
+                                                drivetrain.runOnce(
+                                                                () -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
+
                 return routine;
         }
 
-        //take two swipes at mid and shoot each time
+        // take two swipes at mid and shoot each time
         public AutoRoutine twoSwipeRightSide() {
                 final AutoRoutine routine = autoFactory.newRoutine("TwoSwipeRightSide");
                 final AutoTrajectory initialGrabPath = routine.trajectory("InitialGrab_RightSide");
                 final AutoTrajectory hubGrabPath = routine.trajectory("HubGrab_RightSide");
-                
-                routine.active().onTrue(
-                        Commands.sequence(
-                                initialGrabPath.resetOdometry(),
 
-                                lintake.deployLintake(),
-                                Commands.waitSeconds(0.5),
-                                initialGrabPath.cmd(),
-                                shooter.buildShootCommand(
-                                        spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                        indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false, spindexer)
-                                        .alongWith(lintake.oscillateIntake())
-                                        .alongWith(drivetrain.applyRequest(() -> brake))
-                                        .withTimeout(4),
-                                
-                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
-                                hubGrabPath.cmd(),
-                                shooter.buildShootCommand(
-                                        spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                        indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false, spindexer)
-                                        .alongWith(lintake.oscillateIntake())
-                                        .alongWith(drivetrain.applyRequest(() -> brake))
-                                        .withTimeout(4),
-                                
-                                lintake.setHeightCommand(0.1),
-                                lintake.stopCommand(),
-                                drivetrain.applyRequest(() -> idle),
-                                drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
-                
+                routine.active().onTrue(
+                                Commands.sequence(
+                                                initialGrabPath.resetOdometry(),
+
+                                                lintake.deployLintake(),
+                                                Commands.waitSeconds(0.5),
+                                                initialGrabPath.cmd(),
+                                                shooter.buildShootCommand(
+                                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
+                                                                ShooterMode.Autoaim,
+                                                                false, spindexer)
+                                                                .alongWith(lintake.oscillateIntake())
+                                                                .alongWith(drivetrain.applyRequest(() -> brake))
+                                                                .withTimeout(4),
+
+                                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
+                                                hubGrabPath.cmd(),
+                                                shooter.buildShootCommand(
+                                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
+                                                                ShooterMode.Autoaim,
+                                                                false, spindexer)
+                                                                .alongWith(lintake.oscillateIntake())
+                                                                .alongWith(drivetrain.applyRequest(() -> brake))
+                                                                .withTimeout(4),
+
+                                                lintake.setHeightCommand(0.1),
+                                                lintake.stopCommand(),
+                                                drivetrain.applyRequest(() -> idle),
+                                                drivetrain.runOnce(
+                                                                () -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
+
                 return routine;
         }
 
-        //take one swipes at mid and shoot
+        // take one swipes at mid and shoot
         public AutoRoutine oneSwipeLeftSide() {
                 final AutoRoutine routine = autoFactory.newRoutine("OneSwipeLeftSide");
                 final AutoTrajectory initialGrabPath = routine.trajectory("InitialGrab_LeftSide");
-                
+
                 routine.active().onTrue(
-                        Commands.sequence(
-                                initialGrabPath.resetOdometry(),
-                                
-                                lintake.deployLintake(),
-                                Commands.waitSeconds(0.5),
-                                initialGrabPath.cmd(),
-                                shooter.buildShootCommand(
-                                        spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                        indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false, spindexer)
-                                        .alongWith(lintake.oscillateIntake())
-                                        .alongWith(drivetrain.applyRequest(() -> brake))
-                                        .withTimeout(4),
-                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
-                                
-                                lintake.setHeightCommand(0.1),
-                                lintake.stopCommand(),
-                                drivetrain.applyRequest(() -> idle),
-                                drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
-                
+                                Commands.sequence(
+                                                initialGrabPath.resetOdometry(),
+
+                                                lintake.deployLintake(),
+                                                Commands.waitSeconds(0.5),
+                                                initialGrabPath.cmd(),
+                                                shooter.buildShootCommand(
+                                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
+                                                                ShooterMode.Autoaim,
+                                                                false, spindexer)
+                                                                .alongWith(lintake.oscillateIntake())
+                                                                .alongWith(drivetrain.applyRequest(() -> brake))
+                                                                .withTimeout(4),
+                                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
+
+                                                lintake.setHeightCommand(0.1),
+                                                lintake.stopCommand(),
+                                                drivetrain.applyRequest(() -> idle),
+                                                drivetrain.runOnce(
+                                                                () -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
+
                 return routine;
         }
 
-        //take two swipes at mid and shoot each time
+        // take two swipes at mid and shoot each time
         public AutoRoutine twoSwipeLeftSide() {
                 final AutoRoutine routine = autoFactory.newRoutine("TwoSwipeLeftSide");
                 final AutoTrajectory initialGrabPath = routine.trajectory("InitialGrab_LeftSide");
                 final AutoTrajectory hubGrabPath = routine.trajectory("HubGrab_LeftSide");
-                
-                routine.active().onTrue(
-                        Commands.sequence(
-                                initialGrabPath.resetOdometry(),
 
-                                lintake.deployLintake(),
-                                Commands.waitSeconds(0.5),
-                                initialGrabPath.cmd(),
-                                shooter.buildShootCommand(
-                                        spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                        indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false, spindexer)
-                                        .alongWith(lintake.oscillateIntake())
-                                        .alongWith(drivetrain.applyRequest(() -> brake))
-                                        .withTimeout(4),
-                                
-                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
-                                hubGrabPath.cmd(),
-                                shooter.buildShootCommand(
-                                        spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                        indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false, spindexer)
-                                        .alongWith(lintake.oscillateIntake())
-                                        .alongWith(drivetrain.applyRequest(() -> brake))
-                                        .withTimeout(4),
-                                
-                                lintake.setHeightCommand(0.1),
-                                lintake.stopCommand(),
-                                drivetrain.applyRequest(() -> idle),
-                                drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
-                
+                routine.active().onTrue(
+                                Commands.sequence(
+                                                initialGrabPath.resetOdometry(),
+
+                                                lintake.deployLintake(),
+                                                Commands.waitSeconds(0.5),
+                                                initialGrabPath.cmd(),
+                                                shooter.buildShootCommand(
+                                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
+                                                                ShooterMode.Autoaim,
+                                                                false, spindexer)
+                                                                .alongWith(lintake.oscillateIntake())
+                                                                .alongWith(drivetrain.applyRequest(() -> brake))
+                                                                .withTimeout(4),
+
+                                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
+                                                hubGrabPath.cmd(),
+                                                shooter.buildShootCommand(
+                                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
+                                                                ShooterMode.Autoaim,
+                                                                false, spindexer)
+                                                                .alongWith(lintake.oscillateIntake())
+                                                                .alongWith(drivetrain.applyRequest(() -> brake))
+                                                                .withTimeout(4),
+
+                                                lintake.setHeightCommand(0.1),
+                                                lintake.stopCommand(),
+                                                drivetrain.applyRequest(() -> idle),
+                                                drivetrain.runOnce(
+                                                                () -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
+
                 return routine;
         }
 
-        
-        //take two swipes at mid and shoot each time
+        // take two swipes at mid and shoot each time
         public AutoRoutine twoSwipeAndPushRightSide() {
                 final AutoRoutine routine = autoFactory.newRoutine("TwoSwipeRightSide");
                 final AutoTrajectory initialGrabPath = routine.trajectory("InitialGrabAndPush_RightSide");
                 final AutoTrajectory hubGrabPath = routine.trajectory("HubGrab_RightSide");
-                
-                routine.active().onTrue(
-                        Commands.sequence(
-                                initialGrabPath.resetOdometry(),
 
-                                lintake.deployLintake(),
-                                Commands.waitSeconds(0.5),
-                                initialGrabPath.cmd(),
-                                shooter.buildShootCommand(
-                                        spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                        indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false, spindexer)
-                                        .alongWith(lintake.oscillateIntake())
-                                        .alongWith(drivetrain.applyRequest(() -> brake))
-                                        .withTimeout(4),
-                                
-                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
-                                hubGrabPath.cmd(),
-                                shooter.buildShootCommand(
-                                        spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                        indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false, spindexer)
-                                        .alongWith(lintake.oscillateIntake())
-                                        .alongWith(drivetrain.applyRequest(() -> brake))
-                                        .withTimeout(4),
-                                
-                                lintake.setHeightCommand(0.1),
-                                lintake.stopCommand(),
-                                drivetrain.applyRequest(() -> idle),
-                                drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
-                
+                routine.active().onTrue(
+                                Commands.sequence(
+                                                initialGrabPath.resetOdometry(),
+
+                                                lintake.deployLintake(),
+                                                Commands.waitSeconds(0.5),
+                                                initialGrabPath.cmd(),
+                                                shooter.buildShootCommand(
+                                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
+                                                                ShooterMode.Autoaim,
+                                                                false, spindexer)
+                                                                .alongWith(lintake.oscillateIntake())
+                                                                .alongWith(drivetrain.applyRequest(() -> brake))
+                                                                .withTimeout(4),
+
+                                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
+                                                hubGrabPath.cmd(),
+                                                shooter.buildShootCommand(
+                                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
+                                                                ShooterMode.Autoaim,
+                                                                false, spindexer)
+                                                                .alongWith(lintake.oscillateIntake())
+                                                                .alongWith(drivetrain.applyRequest(() -> brake))
+                                                                .withTimeout(4),
+
+                                                lintake.setHeightCommand(0.1),
+                                                lintake.stopCommand(),
+                                                drivetrain.applyRequest(() -> idle),
+                                                drivetrain.runOnce(
+                                                                () -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
+
                 return routine;
         }
-        
-        //take one swipe at mid, pass, and shoot
+
+        // take one swipe at mid, pass, and shoot
         public AutoRoutine oneSwipeWithPassingRightSide() {
                 final AutoRoutine routine = autoFactory.newRoutine("OneSwipeWithPassing_RightSide");
                 final AutoTrajectory initialGrabPath = routine.trajectory("MidGrabWithPassing_RightSide");
-                
-                routine.active().onTrue(
-                        Commands.sequence(
-                                initialGrabPath.resetOdometry(),
 
-                                lintake.deployLintake(),
-                                Commands.waitSeconds(0.5),
-                                initialGrabPath.cmd(),
-                                shooter.buildShootCommand(
-                                        spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                        indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false, spindexer)
-                                        .alongWith(lintake.oscillateIntake())
-                                        .alongWith(drivetrain.applyRequest(() -> brake))
-                                        .withTimeout(4),
-                                
-                                lintake.setHeightCommand(0.1),
-                                lintake.stopCommand(),
-                                drivetrain.applyRequest(() -> idle),
-                                drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
+                routine.active().onTrue(
+                                Commands.sequence(
+                                                initialGrabPath.resetOdometry(),
+
+                                                lintake.deployLintake(),
+                                                Commands.waitSeconds(0.5),
+                                                initialGrabPath.cmd(),
+                                                shooter.buildShootCommand(
+                                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
+                                                                ShooterMode.Autoaim,
+                                                                false, spindexer)
+                                                                .alongWith(lintake.oscillateIntake())
+                                                                .alongWith(drivetrain.applyRequest(() -> brake))
+                                                                .withTimeout(4),
+
+                                                lintake.setHeightCommand(0.1),
+                                                lintake.stopCommand(),
+                                                drivetrain.applyRequest(() -> idle),
+                                                drivetrain.runOnce(
+                                                                () -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
 
                 initialGrabPath.atTime("StartPassing").onTrue(
-                        shooter.buildShootCommand(
-                                        spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                        indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                        false, spindexer)
-                                        .until(initialGrabPath.atTime("StopPassing")));
+                                shooter.buildShootCommand(
+                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
+                                                false, spindexer)
+                                                .until(initialGrabPath.atTime("StopPassing")));
                 return routine;
         }
 
-        //shoot into the hub without moving
+        // shoot into the hub without moving
         public AutoRoutine shootIntoHub() {
                 final AutoRoutine routine = autoFactory.newRoutine("ShootIntoHub");
-                
-                routine.active().onTrue(
-                        Commands.sequence(
-                                shooter.buildShootCommand(
-                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
-                                                ShooterMode.Autoaim, false, spindexer)
-                                                .withTimeout(4),
-                                lintake.deployLintake(),
-                                Commands.waitSeconds(0.5),
 
-                                shooter.buildShootCommand(
-                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
-                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
-                                                ShooterMode.Autoaim, false, spindexer)
-                                                .alongWith(lintake.oscillateIntake())
-                                                .withTimeout(4),
-                                
-                                lintake.setHeightCommand(0.1),
-                                lintake.stopCommand(),
-                                drivetrain.applyRequest(() -> idle),
-                                drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
+                routine.active().onTrue(
+                                Commands.sequence(
+                                                shooter.buildShootCommand(
+                                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
+                                                                ShooterMode.Autoaim, false, spindexer)
+                                                                .withTimeout(4),
+                                                lintake.deployLintake(),
+                                                Commands.waitSeconds(0.5),
+
+                                                shooter.buildShootCommand(
+                                                                spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
+                                                                indexer.setTargetTemporary(IndexerSetpoint.Index),
+                                                                ShooterMode.Autoaim, false, spindexer)
+                                                                .alongWith(lintake.oscillateIntake())
+                                                                .withTimeout(4),
+
+                                                lintake.setHeightCommand(0.1),
+                                                lintake.stopCommand(),
+                                                drivetrain.applyRequest(() -> idle),
+                                                drivetrain.runOnce(
+                                                                () -> drivetrain.seedFieldCentric(Rotation2d.kZero))));
                 return routine;
         }
 }

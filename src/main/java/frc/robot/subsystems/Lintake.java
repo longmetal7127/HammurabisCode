@@ -18,8 +18,10 @@ import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.SparkSim;
 import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
 import com.revrobotics.spark.config.SparkFlexConfig;
-import com.revrobotics.spark.config.MAXMotionConfig.MAXMotionPositionMode;
 
+import edu.wpi.first.math.controller.ElevatorFeedforward;
+import edu.wpi.first.math.controller.ProfiledPIDController;
+import edu.wpi.first.math.trajectory.TrapezoidProfile;
 import edu.wpi.first.epilogue.Logged;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose3d;
@@ -59,6 +61,7 @@ public class Lintake extends SubsystemBase {
   private final double drumRadius = Units.inchesToMeters(0.5); // meters
   private final double minHeight = 0;
   private final double maxHeight = 0.318;
+  private final double retractDetectVelocityThreshold = -0.2; // m/s
 
   // Feedforward
 
@@ -66,10 +69,14 @@ public class Lintake extends SubsystemBase {
   private final SparkFlex motor;
   private final RelativeEncoder encoder;
   private final SparkSim motorSim;
-  private final SparkClosedLoopController sparkPidController;
 
   private final SparkMax intakeWheelMotor;
   private final SparkClosedLoopController sparkWheelPidController;
+
+  private final ProfiledPIDController positionController = new ProfiledPIDController(
+      kP, kI, kD, new TrapezoidProfile.Constraints(maxVelocity, maxAcceleration));
+  private final ElevatorFeedforward feedforward = new ElevatorFeedforward(kS, kG, kV, kA);
+  private Double targetHeightMeters = null;
 
   // Simulation
   private final TiltedElevatorSim intakeSim;
@@ -86,16 +93,6 @@ public class Lintake extends SubsystemBase {
     encoder.setPosition(0);
 
     motorConfig.smartCurrentLimit(statorCurrentLimit);
-
-    sparkPidController = motor.getClosedLoopController();
-    motorConfig.closedLoop
-        .feedbackSensor(FeedbackSensor.kPrimaryEncoder)
-        .pid(kP, kI, kD, ClosedLoopSlot.kSlot0).outputRange(-1, 1);
-    motorConfig.closedLoop.feedForward.kS(kS).kV(kV).kA(kA);
-    motorConfig.closedLoop.feedForward.kG(kG);
-    motorConfig.closedLoop.maxMotion.cruiseVelocity(maxVelocity);
-    motorConfig.closedLoop.maxMotion.positionMode(MAXMotionPositionMode.kMAXMotionTrapezoidal).allowedProfileError(0.02)
-        .maxAcceleration(maxAcceleration);
 
     // Conversion: motor rotations -> meters, motor RPM -> m/s
     double metersPerMotorRotation = (2.0 * Math.PI * drumRadius) / gearRatio;
@@ -140,6 +137,22 @@ public class Lintake extends SubsystemBase {
    */
   @Override
   public void periodic() {
+    if (targetHeightMeters != null) {
+      if (Math.abs(getPosition() - targetHeightMeters) <= 0.02) {
+        motor.setVoltage(0);
+        targetHeightMeters = null;
+      } else {
+        double pidOutput = positionController.calculate(getPosition(), targetHeightMeters);
+        double ffOutput = feedforward.calculate(positionController.getSetpoint().velocity);
+        motor.setVoltage(MathUtil.clamp(pidOutput + ffOutput, -12.0, 12.0));
+      }
+    } else {
+      // When limp, detect external pushes and actively retract
+      if (getVelocity() < retractDetectVelocityThreshold && getPosition() > minHeight + 0.05) {
+        System.out.println("Lintake pushed in by external force! Retracting.");
+        setPosition(minHeight);
+      }
+    }
   }
 
   /**
@@ -213,7 +226,8 @@ public class Lintake extends SubsystemBase {
    */
   public void setPosition(double position) {
     System.out.println("Setting position to " + position + " meters");
-    setPosition(position, 0);
+    positionController.reset(getPosition(), getVelocity());
+    targetHeightMeters = position;
   }
 
   /**
@@ -223,11 +237,12 @@ public class Lintake extends SubsystemBase {
    * @param acceleration The acceleration in meters per second squared
    */
   public void setPosition(double position, double acceleration) {
-    // Encoder units are already meters, pass directly
-    sparkPidController.setSetpoint(
-        position,
-        ControlType.kMAXMotionPositionControl,
-        ClosedLoopSlot.kSlot0);
+    if (acceleration > 0) {
+      positionController.setConstraints(new TrapezoidProfile.Constraints(maxVelocity, acceleration));
+    } else {
+      positionController.setConstraints(new TrapezoidProfile.Constraints(maxVelocity, maxAcceleration));
+    }
+    setPosition(position);
   }
 
   /**
@@ -264,6 +279,7 @@ public class Lintake extends SubsystemBase {
    * @param voltage The voltage to apply
    */
   public void setVoltage(double voltage) {
+    targetHeightMeters = null;
     motor.setVoltage(voltage);
   }
 
@@ -300,7 +316,11 @@ public class Lintake extends SubsystemBase {
    * @return A command that stops the intake
    */
   public Command stopCommand() {
-    return runOnce(() -> setVelocity(0));
+    return runOnce(() -> {
+      setVelocity(0);
+      targetHeightMeters = null;
+      motor.setVoltage(0);
+    });
   }
 
   /**
@@ -341,6 +361,7 @@ public class Lintake extends SubsystemBase {
 
   public Command zeroingRoutine() {
     return run(() -> {
+      targetHeightMeters = null;
       motor.set(-0.25);
       runReverse();
     }).until(() -> (getCurrent() >= 35)).andThen(() -> {

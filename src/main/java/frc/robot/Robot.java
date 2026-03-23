@@ -190,7 +190,7 @@ public class Robot extends TimedRobot {
                 autoFactory = drivetrain.createAutoFactory();
 
                 autoFactory.bind("StartIntake", Commands.runOnce(() -> {
-                        lintake.setVelocity(0.7);
+                        lintake.setVelocity(0.6);
                 }));
                 autoFactory.bind("StopIntake", Commands.runOnce(() -> {
                         lintake.setVelocity(0);
@@ -262,7 +262,7 @@ public class Robot extends TimedRobot {
                 joystick.leftTrigger().whileTrue(
                                 Commands.sequence(
                                                 lintake.setHeightCommand(lintake.getMaxHeightMeters()),
-                                                lintake.setVelocityCommand(0.7)))
+                                                lintake.setVelocityCommand(0.6)))
                                 .onFalse(
                                                 Commands.either(
                                                                 Commands.sequence(

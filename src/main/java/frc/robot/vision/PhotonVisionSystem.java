@@ -4,6 +4,7 @@ import static edu.wpi.first.units.Units.Inches;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -42,12 +43,9 @@ public class PhotonVisionSystem {
      * IDs 3,4 and 19,20 are on the side of the hub that we can't shoot from, so
      * don't include them
      */
-    private final int[] RedHubApriltagIds = new int[] {
-            2, /* 3, 4, */ 5, 8, 9, 10, 11
-    };
-    private final int[] BlueHubApriltagIds = new int[] {
-            18, /* 19, 20, */ 21, 24, 25, 26, 27
-    };
+    private final List<Integer> RedHubApriltagIds = Arrays.asList(2, 3, 4, 5, 8, 9, 10, 11);
+
+    private final List<Integer> BlueHubApriltagIds = Arrays.asList(18, 19, 20, 21, 24, 25, 26, 27);
 
     private final ApriltagTarget RedHub = new ApriltagTarget(Map.of(
             2, new Translation3d(Inches.of(-23.5), Inches.of(0), Inches.of(33)),
@@ -85,7 +83,7 @@ public class PhotonVisionSystem {
         Pose3d hubTarget = Pose3d.kZero;
         Rotation2d hubHeading = Rotation2d.kZero;
 
-        final HootAutoReplay autoReplay;
+        //final HootAutoReplay autoReplay;
 
         CameraState(CameraConfig config, AprilTagFieldLayout tagLayout) {
             this.name = config.name();
@@ -96,7 +94,7 @@ public class PhotonVisionSystem {
             /*
              * Each camera gets its own log namespace so they can be reviewed independently
              */
-            this.autoReplay = new HootAutoReplay()
+            /*this.autoReplay = new HootAutoReplay()
                     .withStructArray(name + "/PoseEstimations", LoggableRobotPose.struct,
                             () -> poses, val -> poses = val.value)
                     .withStruct(name + "/HubTarget", Pose3d.struct,
@@ -106,7 +104,7 @@ public class PhotonVisionSystem {
                     .withProtobuf(name + "/LastTrackedHubTarget", PhotonTrackedTarget.proto,
                             () -> lastTrackedHubTarget, val -> lastTrackedHubTarget = val.value)
                     .withDouble(name + "/LastTrackedHubTargetTime",
-                            () -> timeOfLastTrackedHubTarget, val -> timeOfLastTrackedHubTarget = val.value);
+                            () -> timeOfLastTrackedHubTarget, val -> timeOfLastTrackedHubTarget = val.value);*/
         }
     }
 
@@ -188,20 +186,24 @@ public class PhotonVisionSystem {
                     }
                     estimateOpt.ifPresent(val -> {
                         int[] tagIds = val.targetsUsed.stream().mapToInt(t -> t.getFiducialId()).toArray();
-                        if (Math.abs(val.estimatedPose.getZ()) > .025) {
+                        var enableLogging = false;
+                        if (Math.abs(val.estimatedPose.getZ()) > .1) {
+                            if (enableLogging) System.out.println("Throwing out with a z of " + val.estimatedPose.getZ());
                             return;
-
                         }
                         if (val.estimatedPose.getX() < 0
-                                || val.estimatedPose.getX() > FieldConstants.fieldWidth) {
+                                || val.estimatedPose.getX() > FieldConstants.fieldLength) {
+                                if (enableLogging) System.out.println("Throwing out with an x of " + val.estimatedPose.getX());
                             return;
                         }
                         if (val.estimatedPose.getY() < 0
                                 || val.estimatedPose.getY() > FieldConstants.fieldWidth) {
+                                if (enableLogging) System.out.println("Throwing out with a y of " + val.estimatedPose.getY());
                             return;
                         }
                         double maxAmbiguity = .4;
                         if (val.targetsUsed.size() == 1 && val.targetsUsed.get(0).poseAmbiguity > maxAmbiguity) {
+                            if (enableLogging) System.out.println("Throwing out with an ambiguity of " + val.targetsUsed.get(0).poseAmbiguity);
                             return;
                         }
 
@@ -220,14 +222,20 @@ public class PhotonVisionSystem {
                             translationalScoresSum *= MathUtil.interpolate(10, 50, scale);
                             angularScoresSum *= MathUtil.interpolate(25, 100, scale);
                         }
+                        // trust hub tags
 
-                        var translationalDivisor = Math.pow(val.targetsUsed.size(), 1.5);
-                        var angularDivisor = Math.pow(val.targetsUsed.size(), 3);
-                        
+                        var translationalDivisor = Math.pow(val.targetsUsed.size(), 1.5) + (val.targetsUsed.stream()
+                                .anyMatch((o) -> RedHubApriltagIds.contains(o.getFiducialId())
+                                        || BlueHubApriltagIds.contains(o.getFiducialId())) ? 1 : 0);
+                        var angularDivisor = Math.pow(val.targetsUsed.size(), 3) + (val.targetsUsed.stream()
+                                .anyMatch((o) -> RedHubApriltagIds.contains(o.getFiducialId())
+                                        || BlueHubApriltagIds.contains(o.getFiducialId())) ? 1 : 0);
+
                         if (val.estimatedPose.getZ() < 0.6) {
                             estimates.add(
                                     new LoggableRobotPose(val.estimatedPose, val.timestampSeconds, tagIds,
-                                            val.strategy, translationalScoresSum / translationalDivisor, angularScoresSum / angularDivisor));
+                                            val.strategy, translationalScoresSum / translationalDivisor,
+                                            angularScoresSum / angularDivisor));
                         }
                     });
                 }
@@ -235,7 +243,7 @@ public class PhotonVisionSystem {
                 cam.poses = estimates.toArray(new LoggableRobotPose[0]);
             }
 
-            cam.autoReplay.update();
+            //cam.autoReplay.update();
 
             for (LoggableRobotPose pose : cam.poses) {
                 poseConsumer.accept(pose);

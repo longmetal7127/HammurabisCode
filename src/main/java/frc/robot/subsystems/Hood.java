@@ -138,7 +138,7 @@ public class Hood {
                 gearRatio,
                 0.005771941, // Arm moment of inertia
                 Units.inchesToMeters(3.883), // Arm length (m)
-                Units.degreesToRadians(0), // Min angle (rad)
+                Units.degreesToRadians(-90), // Min angle (rad)
                 Units.degreesToRadians(90), // Max angle (rad)
                 false,
                 Units.degreesToRadians(0) // Starting position (rad)
@@ -151,10 +151,8 @@ public class Hood {
     public void periodic() {
         BaseStatusSignal.refreshAll(
                 positionSignal,
-                velocitySignal,
-                voltageSignal,
-                statorCurrentSignal,
-                temperatureSignal);
+                velocitySignal
+                );
     }
 
     /**
@@ -162,17 +160,14 @@ public class Hood {
      */
     public void simulationPeriodic() {
         // Set supply voltage for the TalonFXS sim state
-        motor.getSimState().setSupplyVoltage(RobotController.getBatteryVoltage());
+        motor.getSimState().setSupplyVoltage(12);
 
         // Set input voltage from motor controller to simulation
         pivotSim.setInput(motor.getSimState().getMotorVoltage());
 
         // Update simulation by 20ms
         pivotSim.update(0.020);
-        RoboRioSim.setVInVoltage(
-                BatterySim.calculateDefaultBatteryLoadedVoltage(
-                        pivotSim.getCurrentDrawAmps()));
-
+        pivotSim.setInputVoltage(12);
         // Apply rotor position/velocity (before gear ratio) to sim state
         double motorPosition = Radians.of(pivotSim.getAngleRads() * gearRatio).in(Rotations);
         double motorVelocity = RadiansPerSecond.of(
@@ -266,6 +261,6 @@ public class Hood {
     }
 
     public boolean isNearTarget(Angle threshold) {
-        return motor.getPosition().isNear(positionRequest.getPositionMeasure(),threshold);
+        return positionSignal.isNear(positionRequest.getPositionMeasure(), threshold);
     }
 }

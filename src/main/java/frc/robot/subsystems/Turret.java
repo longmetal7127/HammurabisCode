@@ -74,7 +74,6 @@ public class Turret {
   private final StatusSignal<Angle> positionSignal;
   private final StatusSignal<AngularVelocity> velocitySignal;
   private final StatusSignal<Voltage> voltageSignal;
-  private final StatusSignal<Current> statorCurrentSignal;
   private final StatusSignal<Temperature> temperatureSignal;
 
   private final double minAngleDegrees = -180.0;
@@ -109,7 +108,6 @@ public class Turret {
     positionSignal = motor.getPosition();
     velocitySignal = motor.getVelocity();
     voltageSignal = motor.getMotorVoltage();
-    statorCurrentSignal = motor.getStatorCurrent();
     temperatureSignal = motor.getDeviceTemp();
 
     TalonFXConfiguration config = new TalonFXConfiguration();
@@ -189,27 +187,10 @@ public class Turret {
     BaseStatusSignal.refreshAll(
         positionSignal,
         velocitySignal,
-        voltageSignal,
-        statorCurrentSignal,
-        temperatureSignal);
+        voltageSignal
+        );
 
-    if (!positionInitialized && false) {
-      Optional<Angle> solvedAngle = crtSolver.getAngleOptional();
-      if (solvedAngle.isPresent()) {
-        double angleDegrees = solvedAngle.get().in(Degrees);
-        // Set motor position in rotations (mechanism rotations, since SensorToMechanismRatio is set)
-        motor.setPosition(Units.degreesToRotations(angleDegrees));
-        positionInitialized = true;
-        System.out.println("Turret position initialized to: " + angleDegrees + " degrees");
-        System.out.println("CRT Status: " + crtSolver.getLastStatus());
-        System.out.println("CRT Error: " + crtSolver.getLastErrorRotations() + " rotations");
-      } else {
-        if (crtSolver.getLastStatus() != CRTSolver.CRTStatus.NOT_ATTEMPTED) {
-          System.out.println("CRT initialization failed: " + crtSolver.getLastStatus());
-          System.out.println("CRT Error: " + crtSolver.getLastErrorRotations() + " rotations");
-        }
-      }
-    }
+ 
   }
 
   /**
@@ -277,14 +258,6 @@ public class Turret {
     return voltageSignal.getValueAsDouble();
   }
 
-  /**
-   * Get the current motor current.
-   * 
-   * @return Motor current in amps
-   */
-  public double getCurrent() {
-    return statorCurrentSignal.getValueAsDouble();
-  }
 
   /**
    * Get the current motor temperature.

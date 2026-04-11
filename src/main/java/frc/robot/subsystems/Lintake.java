@@ -27,12 +27,10 @@ import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.util.Units;
-import edu.wpi.first.wpilibj.simulation.RoboRioSim;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import frc.robot.Robot.IntakeMode;
-import frc.robot.subsystems.Indexer.IndexerSetpoint;
 import frc.robot.util.TiltedElevatorSim;
 
 /**
@@ -212,7 +210,6 @@ public class Lintake extends SubsystemBase {
    * @param position The target position in meters
    */
   public void setPosition(double position) {
-    System.out.println("Setting position to " + position + " meters");
     setPosition(position, 0);
   }
 
@@ -365,23 +362,43 @@ public class Lintake extends SubsystemBase {
   }
 
   /**
-   * Creates a command that oscillates the intake between two setpoints.
-   * The intake will move between the lower and upper positions continuously
-   * until the command is interrupted.
-   * 
-   * @param lowerPosition The lower setpoint in meters
-   * @param upperPosition The upper setpoint in meters
-   * @return A command that oscillates the intake between the two positions
+   * Creates a command that oscillates the intake continuously using a sinusoidal
+   * setpoint.
+   *
+   * @param lowerPosition The lower position bound in meters
+   * @param upperPosition The upper position bound in meters
+   * @param frequencyHz   Oscillation frequency in Hz
+   * @return A command that continuously applies a time-parameterized sinusoidal
+   *         setpoint
+   */
+  public Command oscillateIntake(double lowerPosition, double upperPosition, double frequencyHz) {
+    double boundedLower = MathUtil.clamp(Math.min(lowerPosition, upperPosition), minHeight, maxHeight);
+    double boundedUpper = MathUtil.clamp(Math.max(lowerPosition, upperPosition), minHeight, maxHeight);
+    double midpoint = (boundedLower + boundedUpper) * 0.5;
+    double amplitude = (boundedUpper - boundedLower) * 0.5;
+    double omegaRadPerSec = 2.0 * Math.PI * Math.max(0.0, frequencyHz);
+    double[] startTimeSeconds = new double[1];
+
+    return run(() -> {
+      double elapsedTimeSeconds = Timer.getFPGATimestamp() - startTimeSeconds[0];
+      double targetPosition = midpoint;
+
+      if (omegaRadPerSec > 0.0 && amplitude > 0.0) {
+        targetPosition = midpoint + amplitude * Math.sin(omegaRadPerSec * elapsedTimeSeconds);
+      }
+
+      setPosition(targetPosition);
+    }).beforeStarting(() -> startTimeSeconds[0] = Timer.getFPGATimestamp());
+  }
+
+  /**
+   * Creates a command that oscillates the intake between 0.1 m and max height
+   * at a default frequency.
+   *
+   * @return A command that continuously applies a sinusoidal setpoint
    */
   public Command oscillateIntake() {
-    return setHeightCommand(0.1)
-        .andThen(run(() -> {
-          if (Math.abs(getPosition() - 0.1) <= 0.02) {
-            setPosition(getMaxHeightMeters());
-          } else if (Math.abs(getPosition() - getMaxHeightMeters()) <= 0.02) {
-            setPosition(0.1);
-          }
-        }));
+    return oscillateIntake(0.1, getMaxHeightMeters(), 0.5);
   }
 
 }

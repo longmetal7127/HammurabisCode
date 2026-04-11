@@ -75,7 +75,6 @@ public class Flywheel {
 
     /* device status signals */
     private final StatusSignal<AngularVelocity> leaderMotorVelocity = leaderMotor.getVelocity(false);
-    private final StatusSignal<Current> leaderMotorTorqueCurrent = leaderMotor.getTorqueCurrent(false);
 
     /* controls used by the leader motor */
     private final VelocityVoltage leaderMotorSetpointRequest = new VelocityVoltage(0);
@@ -160,12 +159,7 @@ public class Flywheel {
         return leaderMotorVelocity.getValue();
     }
 
-    /**
-     * @return The leaderMotorTorqueCurrent of the flywheel
-     */
-    public Current getleaderMotorTorqueCurrent() {
-        return leaderMotorTorqueCurrent.getValue();
-    }
+
 
     public boolean isNearTarget(AngularVelocity threshold) {
         return leaderMotorVelocity.isNear(RotationsPerSecond.of(leaderMotorSetpointRequest.Velocity), threshold);
@@ -204,8 +198,8 @@ public class Flywheel {
     public void periodic() {
         /* refresh all status signals */
         BaseStatusSignal.refreshAll(
-                leaderMotorVelocity,
-                leaderMotorTorqueCurrent);
+                leaderMotorVelocity
+                );
 
         leaderMotorFlywheelMech2d.setLength(
                 leaderMotorVelocity.getValueAsDouble() / 100.0);

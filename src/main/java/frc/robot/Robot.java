@@ -126,9 +126,9 @@ public class Robot extends TimedRobot {
         public final FuelSim fuelSim = new FuelSim();
 
         /* log and replay timestamp and joystick data */
-        private final HootAutoReplay m_timeAndJoystickReplay = new HootAutoReplay()
+        /*private final HootAutoReplay m_timeAndJoystickReplay = new HootAutoReplay()
                         .withTimestampReplay()
-                        .withJoystickReplay();
+                        .withJoystickReplay();*/
         private final AutoFactory autoFactory;
         private final AutoChooser autoChooser = new AutoChooser();
 
@@ -264,7 +264,8 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index),
-                                                ShooterMode.AgainstHub, false, null));
+                                                ShooterMode.AgainstHub, false, null)
+                                               /*  .alongWith(lintake.oscillateIntake())*/);
 
                 joystick.leftTrigger().whileTrue(
                                 Commands.sequence(
@@ -301,12 +302,14 @@ public class Robot extends TimedRobot {
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
-                                                false, null));
+                                                false, null)
+                                                /* .alongWith(lintake.oscillateIntake())*/);
                 joystick.y().whileTrue(
                                 shooter.buildShootCommand(
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Pass,
-                                                false, null));
+                                                false, null)
+                                                .alongWith(lintake.oscillateIntake()));
 
                 operatorJoystick.b().onTrue(lintake.zeroingRoutine());
                 operatorJoystick.a().whileTrue(
@@ -326,7 +329,7 @@ public class Robot extends TimedRobot {
                 operatorJoystick.povDown().whileTrue(drivetrain.sysIdQuasistatic(SysIdRoutine.Direction.kReverse));
                 operatorJoystick.povRight().whileTrue(drivetrain.sysIdDynamic(SysIdRoutine.Direction.kReverse));
 
-                drivetrain.registerTelemetry(logger::telemeterize);
+                //drivetrain.registerTelemetry(logger::telemeterize);
 
         }
 
@@ -342,7 +345,7 @@ public class Robot extends TimedRobot {
 
         @Override
         public void robotPeriodic() {
-                m_timeAndJoystickReplay.update();
+                //m_timeAndJoystickReplay.update();
                 CommandScheduler.getInstance().run();
                 // CommandsLogging.logRunningCommands();
                 // CommandsLogging.logRequiredSubsystems();
@@ -641,6 +644,7 @@ public class Robot extends TimedRobot {
                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                 indexer.setTargetTemporary(IndexerSetpoint.Index), ShooterMode.Autoaim,
                                                 false, spindexer)
+                                                .alongWith(lintake.oscillateIntake())
                                                 .until(initialGrabPath.atTime("StopPassing")));
                 return routine;
         }
@@ -655,6 +659,7 @@ public class Robot extends TimedRobot {
                                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
                                                                 indexer.setTargetTemporary(IndexerSetpoint.Index),
                                                                 ShooterMode.Autoaim, false, spindexer)
+                                                                .alongWith(lintake.oscillateIntake())
                                                                 .withTimeout(4),
                                                 lintake.deployLintake(),
                                                 Commands.waitSeconds(0.5),

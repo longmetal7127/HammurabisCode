@@ -29,6 +29,17 @@ public class ShootOnTheFlyCalculator {
   /** Offset of the launcher from the center of the robot. */
   private Translation2d launcherOffset = new Translation2d(-0.1651, -0.1016);
 
+  /** Previous-cycle solved TOF used as a warm-start seed. */
+  private double previousTOF = -1.0;
+
+  // Solver conditioning defaults (inspired by frc-fire-control ShotCalculator)
+  private int maxIterations = 25;
+  private double convergenceToleranceSec = 0.001;
+  private double tofMinSec = 0.05;
+  private double tofMaxSec = 3.0;
+  private double minSotfSpeedMps = 0.1;
+  private double maxSotfSpeedMps = 3.0;
+
 
 
   /**
@@ -63,6 +74,29 @@ public class ShootOnTheFlyCalculator {
    */
   public void addTableEntry(double distance, double rpm, double hoodAngle, double timeOfFlight) {
     shooterTable.put(distance, new ShooterParams(rpm, hoodAngle, timeOfFlight));
+  }
+
+  /** Clears warm-start state (recommended after pose resets or major state discontinuities). */
+  public void resetWarmStart() {
+    previousTOF = -1.0;
+  }
+
+  /** Optional solver tuning for iteration count and convergence tolerance. */
+  public void setSolverTuning(int maxIterations, double convergenceToleranceSec) {
+    this.maxIterations = Math.max(1, maxIterations);
+    this.convergenceToleranceSec = Math.max(1e-6, convergenceToleranceSec);
+  }
+
+  /** Optional TOF bounds used for per-iteration clamping. */
+  public void setTofBounds(double tofMinSec, double tofMaxSec) {
+    this.tofMinSec = Math.max(1e-3, Math.min(tofMinSec, tofMaxSec));
+    this.tofMaxSec = Math.max(this.tofMinSec, tofMaxSec);
+  }
+
+  /** Optional speed bounds for enabling/disabling SOTF compensation. */
+  public void setSotfSpeedBounds(double minSotfSpeedMps, double maxSotfSpeedMps) {
+    this.minSotfSpeedMps = Math.max(0.0, Math.min(minSotfSpeedMps, maxSotfSpeedMps));
+    this.maxSotfSpeedMps = Math.max(this.minSotfSpeedMps, maxSotfSpeedMps);
   }
 
   /**
@@ -128,12 +162,33 @@ public class ShootOnTheFlyCalculator {
     Translation2d staticToGoal = goalPosition.minus(futurePos);
     double staticDistance = staticToGoal.getNorm();
 
+    if (staticDistance < 1e-6) {
+      previousTOF = -1.0;
+      return new ShooterCommand(new Rotation2d(), 0.0, 0.0, 0.0, 0.0);
+    }
+
     // 3. Compute the projectile speed v_p from the static lookup (used for proxy derivative)
     ShooterParams staticParams = shooterTable.get(staticDistance);
-    double vp = staticParams != null && staticParams.timeOfFlight() > 0 ? staticDistance / staticParams.timeOfFlight() : 1.0;
+    if (staticParams == null || staticParams.timeOfFlight() <= 0.0) {
+      previousTOF = -1.0;
+      return new ShooterCommand(staticToGoal.getAngle(), 0.0, 0.0, staticDistance, 0.0);
+    }
+
+    double vp = staticDistance / staticParams.timeOfFlight();
+    double robotSpeed = effectiveVelocity.getNorm();
+
+    // Solution conditioning feature: for near-static speed, use plain LUT shot.
+    if (robotSpeed < minSotfSpeedMps || robotSpeed > maxSotfSpeedMps) {
+      previousTOF = staticParams.timeOfFlight();
+      return new ShooterCommand(
+          staticToGoal.getAngle(),
+          staticParams.rpm(),
+          staticParams.hoodAngle(),
+          staticDistance,
+          0.0);
+    }
 
     // 4. Initial TOF guess: τ_0 = D / (v_p + |v| * cos(θ))
-    double robotSpeed = effectiveVelocity.getNorm();
     double cosTheta = 0.0;
     if (robotSpeed > 1e-6 && staticDistance > 1e-6) {
       cosTheta =
@@ -141,45 +196,79 @@ public class ShootOnTheFlyCalculator {
                   + staticToGoal.getY() * effectiveVelocity.getY())
               / (staticDistance * robotSpeed);
     }
-    double tau = staticDistance / (vp + robotSpeed * cosTheta);
+
+    // Warm start when available; fallback to projected geometric guess.
+    double tau;
+    if (previousTOF > 0.0) {
+      tau = previousTOF;
+    } else {
+      double initialDenominator = vp + robotSpeed * cosTheta;
+      if (initialDenominator <= 1e-3) {
+        tau = staticParams.timeOfFlight();
+      } else {
+        tau = staticDistance / initialDenominator;
+      }
+    }
+    tau = MathUtil.clamp(tau, tofMinSec, tofMaxSec);
 
     // 5. Newton iteration on the TOF residual: E(τ) = τ - τ_LUT(D(τ))
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < maxIterations; i++) {
       Translation2d d = staticToGoal.minus(effectiveVelocity.times(tau));
       double D = d.getNorm();
 
+      if (D < 0.01) {
+        tau = staticParams.timeOfFlight();
+        break;
+      }
+
       ShooterParams params = shooterTable.get(D);
-      double tauLUT = params != null ? params.timeOfFlight() : tau;
+      double tauLUT = params != null && params.timeOfFlight() > 0.0 ? params.timeOfFlight() : tau;
       double E = tau - tauLUT;
 
-      if (Math.abs(E) < 0.005) {
+      if (Math.abs(E) < convergenceToleranceSec) {
         break;
       }
 
       double dDotV = d.getX() * effectiveVelocity.getX() + d.getY() * effectiveVelocity.getY();
+      if (Math.abs(vp * D) < 1e-6) {
+        tau = tauLUT;
+        break;
+      }
       double EPrime = 1.0 + dDotV / (vp * D);
 
-      if (Math.abs(EPrime) < 1e-6) break; // Divergence guard
-      tau -= E / EPrime;
+      if (Math.abs(EPrime) > 0.01) {
+        tau -= E / EPrime;
+      } else {
+        // Near-singular derivative: fallback to fixed-point step.
+        tau = tauLUT;
+      }
+
+      // Per-iteration clamp to avoid runaway / branch jumps.
+      tau = MathUtil.clamp(tau, tofMinSec, tofMaxSec);
     }
+
+    if (!Double.isFinite(tau)) {
+      tau = staticParams.timeOfFlight();
+    }
+    previousTOF = tau;
 
     // 6. Final solution: compute virtual target at converged TOF
     Translation2d d = staticToGoal.minus(effectiveVelocity.times(tau));
     double effectiveDistance = d.getNorm();
-    Rotation2d turretAngle = d.getAngle();
+    Rotation2d turretAngle = effectiveDistance > 1e-6 ? d.getAngle() : staticToGoal.getAngle();
     
-    // 7. Angular velocity feedforward: rate of change of aim angle
-    // omega_turret = tangential velocity / distance
+  // 7. Angular velocity feedforward: rate of change of aim angle
+  // Use converged geometry (d/effectiveDistance) so FF matches final solution.
     double angularVelocityFF = 0.0;
-    if (staticDistance > 0.1) {
-        double tangentialVel = (staticToGoal.getY() * effectiveVelocity.getX() - staticToGoal.getX() * effectiveVelocity.getY()) / staticDistance;
-        angularVelocityFF = (tangentialVel / staticDistance) - robotOmegaRadPerSec;
+  if (effectiveDistance > 0.1) {
+    double tangentialVel = (d.getY() * effectiveVelocity.getX() - d.getX() * effectiveVelocity.getY()) / effectiveDistance;
+    angularVelocityFF = (tangentialVel / effectiveDistance) - robotOmegaRadPerSec;
     }
 
     // 8. Look up RPM and hood angle at the effective distance
-    ShooterParams finalParams = shooterTable.get(effectiveDistance);
-    double outRpm = finalParams != null ? finalParams.rpm() : 0.0;
-    double outHood = finalParams != null ? finalParams.hoodAngle() : 0.0;
+  ShooterParams finalParams = shooterTable.get(effectiveDistance);
+  double outRpm = finalParams != null ? finalParams.rpm() : staticParams.rpm();
+  double outHood = finalParams != null ? finalParams.hoodAngle() : staticParams.hoodAngle();
 
     return new ShooterCommand(
         turretAngle, outRpm, outHood, effectiveDistance, angularVelocityFF);

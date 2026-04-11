@@ -164,7 +164,7 @@ public class Shooter extends SubsystemBase {
                 new Translation2d(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond),
                 speeds.omegaRadiansPerSecond,
                 target,
-                0.2);
+                0);
         DogLog.log("Shooter/SOTF/EffectiveDistanceMeters", cmd.effectiveDistance());
         return cmd;
     }
@@ -213,19 +213,26 @@ public class Shooter extends SubsystemBase {
             return;
         if (fuelSpawnTimer.get() < FUEL_SPAWN_INTERVAL)
             return;
+        launchSimulatedFuelNow();
         fuelSpawnTimer.restart();
+    }
 
+    /** Launches one fuel projectile into FuelSim immediately (no rate-limit check). */
+    private void launchSimulatedFuelNow() {
         double hoodPitchRad = Units.rotationsToRadians(hood.getPosition());
 
-        double turretYawRad = Math.toRadians(turret.getAngleDegrees());
+        // FuelSim expects robot-relative turret yaw where 0 deg points robot-forward.
+        // Turret mechanism angle uses 0 deg = rear, so convert before launching.
+        double turretYawRad = Math.toRadians(turretSetpointToRobotRelativeDeg(turret.getAngleDegrees()));
 
         double flywheelRPS = flywheel.getleaderMotorVelocity().in(RotationsPerSecond);
         double exitSpeedMps = Math.abs(flywheelRPS) * 2.0 * Math.PI * FLYWHEEL_RADIUS;
-
+        System.out.println("Launching simulated fuel with exit speed " + exitSpeedMps + " m/s, hood pitch "
+                + Math.toDegrees(hoodPitchRad) + " deg, turret yaw " + Math.toDegrees(turretYawRad) + " deg");
         fuelSim.launchFuel(
                 MetersPerSecond.of(exitSpeedMps),
                 Radians.of(hoodPitchRad),
-                Radians.of(turretYawRad - Math.PI / 2),
+                Radians.of(turretYawRad),
                 Inches.of(22)); // launch height — above bumper height
     }
 
@@ -248,6 +255,23 @@ public class Shooter extends SubsystemBase {
      */
     public Command buildShootCommand(Command spindexerFeedCommand, Command indexerFeedCommand,
             ShooterMode shooterMode, boolean turretOnly, Spindexer spindexer) {
+
+    Command feedAndSimulateCommand = Commands.waitUntil(readyToShoot)
+        .andThen(
+            // Reset spawn timer so the first fuel fires immediately
+            Commands.runOnce(() -> {
+                if (RobotBase.isSimulation()) {
+                launchSimulatedFuelNow();
+                fuelSpawnTimer.restart();
+                }
+            }),
+            Commands.parallel(
+                spindexerFeedCommand,
+                indexerFeedCommand,
+                // Periodically spawn simulated fuel while feeding
+                Commands.run(this::trySpawnSimulatedFuel)
+            ).until(() -> !readyToShoot.getAsBoolean())
+        ).repeatedly();
 
         return runEnd(() -> {
             var cmd = getCurrentSOTFCommand();
@@ -290,19 +314,12 @@ public class Shooter extends SubsystemBase {
             turret.setAngle(robotRelativeToTurretSetpointDeg(turretAngleDeg), turretFFRadPerSec);
         }, () -> {
             hood.setAngle(0);
-        }).alongWith(
-                Commands.waitUntil(readyToShoot)
-                        .andThen(
-                                // Reset spawn timer so the first fuel fires immediately
-                                Commands.runOnce(() -> fuelSpawnTimer.restart()),
-                                Commands.parallel(
-                                        spindexerFeedCommand,
-                                        indexerFeedCommand,
-                                        // Periodically spawn simulated fuel while feeding
-                                        Commands.run(this::trySpawnSimulatedFuel)
-                                ).until(() -> !readyToShoot.getAsBoolean())
-                        ).repeatedly()
-        ).withName("Shoot");
+    }).alongWith(
+        Commands.either(
+            feedAndSimulateCommand,
+            Commands.none(),
+            () -> !turretOnly))
+        .withName("Shoot");
         /* //automatically reversing spindexer if it jams
                         .andThen(Commands.either(
                                 Commands.sequence(
@@ -457,6 +474,14 @@ public class Shooter extends SubsystemBase {
     private double robotRelativeToTurretSetpointDeg(double robotRelativeDeg) {
         double mechDeg = robotRelativeDeg + 180.0; // map forward(0) -> rear(180)
         return normalizeDegrees(mechDeg);
+    }
+
+    /**
+     * Convert turret mechanism angle (0 = rear) back to robot-relative angle
+     * (0 = forward), matching FuelSim's turret-yaw convention.
+     */
+    private double turretSetpointToRobotRelativeDeg(double turretMechDeg) {
+        return normalizeDegrees(turretMechDeg - 180.0);
     }
 
     /** Normalize degrees to the range (-180, 180]. */

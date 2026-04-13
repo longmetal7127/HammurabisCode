@@ -38,7 +38,7 @@ public class ShootOnTheFlyCalculator {
   private double tofMinSec = 0.05;
   private double tofMaxSec = 3.0;
   private double minSotfSpeedMps = 0.1;
-  private double maxSotfSpeedMps = 3.0;
+  private double maxSotfSpeedMps = 8.0;
 
 
 
@@ -179,6 +179,7 @@ public class ShootOnTheFlyCalculator {
 
     // Solution conditioning feature: for near-static speed, use plain LUT shot.
     if (robotSpeed < minSotfSpeedMps || robotSpeed > maxSotfSpeedMps) {
+      System.out.println("exiting early");
       previousTOF = staticParams.timeOfFlight();
       return new ShooterCommand(
           staticToGoal.getAngle(),

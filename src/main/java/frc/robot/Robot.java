@@ -435,6 +435,7 @@ public class Robot extends TimedRobot {
 
                                                 lintake.deployLintake(),
                                                 Commands.waitSeconds(0.5),
+                                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
                                                 initialGrabPath.cmd(),
                                                 shooter.buildShootCommand(
                                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
@@ -467,6 +468,7 @@ public class Robot extends TimedRobot {
 
                                                 lintake.deployLintake(),
                                                 Commands.waitSeconds(0.5),
+                                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
                                                 initialGrabPath.cmd(),
                                                 shooter.buildShootCommand(
                                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
@@ -508,6 +510,7 @@ public class Robot extends TimedRobot {
 
                                                 lintake.deployLintake(),
                                                 Commands.waitSeconds(0.5),
+                                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
                                                 initialGrabPath.cmd(),
                                                 shooter.buildShootCommand(
                                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
@@ -540,6 +543,7 @@ public class Robot extends TimedRobot {
 
                                                 lintake.deployLintake(),
                                                 Commands.waitSeconds(0.5),
+                                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
                                                 initialGrabPath.cmd(),
                                                 shooter.buildShootCommand(
                                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
@@ -582,6 +586,7 @@ public class Robot extends TimedRobot {
 
                                                 lintake.deployLintake(),
                                                 Commands.waitSeconds(0.5),
+                                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
                                                 initialGrabPath.cmd(),
                                                 shooter.buildShootCommand(
                                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),
@@ -623,6 +628,7 @@ public class Robot extends TimedRobot {
 
                                                 lintake.deployLintake(),
                                                 Commands.waitSeconds(0.5),
+                                                lintake.setHeightCommand(lintake.getMaxHeightMeters()),
                                                 initialGrabPath.cmd(),
                                                 shooter.buildShootCommand(
                                                                 spindexer.setTargetTemporary(SpindexerSetpoint.Spin),

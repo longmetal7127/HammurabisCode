@@ -187,7 +187,7 @@ public class PhotonVisionSystem {
                     estimateOpt.ifPresent(val -> {
                         int[] tagIds = val.targetsUsed.stream().mapToInt(t -> t.getFiducialId()).toArray();
                         var enableLogging = false;
-                        if (Math.abs(val.estimatedPose.getZ()) > .1) {
+                        if (Math.abs(val.estimatedPose.getZ()) > .5) {
                             if (enableLogging) System.out.println("Throwing out with a z of " + val.estimatedPose.getZ());
                             return;
                         }
@@ -212,15 +212,15 @@ public class PhotonVisionSystem {
                         for (var tag : val.targetsUsed) {
                             var tagDistance = tag.bestCameraToTarget.getTranslation().getNorm();
 
-                            translationalScoresSum += .4 * tagDistance * tagDistance;
-                            angularScoresSum += .2 * tagDistance * tagDistance;
+                            translationalScoresSum += .2 * tagDistance * tagDistance;
+                            angularScoresSum += .1 * tagDistance * tagDistance;
                         }
 
                         // Heavily distrust single tag observations
                         if (val.targetsUsed.size() == 1) {
                             var scale = val.targetsUsed.get(0).poseAmbiguity / maxAmbiguity;
-                            translationalScoresSum *= MathUtil.interpolate(10, 50, scale);
-                            angularScoresSum *= MathUtil.interpolate(25, 100, scale);
+                            translationalScoresSum *= MathUtil.interpolate(1, 5, scale);
+                            angularScoresSum *= MathUtil.interpolate(2, 5, scale);
                         }
                         // trust hub tags
 

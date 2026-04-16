@@ -121,7 +121,7 @@ public class Flywheel {
                             .withSensorToMechanismRatio(1 / 1.5))
             .withSlot0(
                     motorTalonFXInitialConfigs.Slot0.clone()
-                            .withKP(0.1368)
+                            .withKP(0.21)
                             .withKI(0)
                             .withKD(0)
                             .withKS(0.38449)

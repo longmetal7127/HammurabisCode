@@ -262,8 +262,8 @@ public class ShootOnTheFlyCalculator {
   // Use converged geometry (d/effectiveDistance) so FF matches final solution.
     double angularVelocityFF = 0.0;
   if (effectiveDistance > 0.1) {
-    double tangentialVel = (d.getY() * effectiveVelocity.getX() - d.getX() * effectiveVelocity.getY()) / effectiveDistance;
-    angularVelocityFF = (tangentialVel / effectiveDistance) - robotOmegaRadPerSec;
+  double tangentialVel = (d.getX() * effectiveVelocity.getY() - d.getY() * effectiveVelocity.getX()) / effectiveDistance;
+  angularVelocityFF = (tangentialVel / effectiveDistance) - robotOmegaRadPerSec;
     }
 
     // 8. Look up RPM and hood angle at the effective distance

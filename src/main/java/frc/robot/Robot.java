@@ -249,10 +249,10 @@ public class Robot extends TimedRobot {
                                 drivetrain.playMusic().ignoringDisable(true));
                 RobotModeTriggers.teleop().onTrue(
                                 drivetrain.stopMusic());
-                joystick.back().and(joystick.y()).whileTrue(drivetrain.sysIdDynamic(Direction.kForward));
-                joystick.back().and(joystick.x()).whileTrue(drivetrain.sysIdDynamic(Direction.kReverse));
-                joystick.start().and(joystick.y()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kForward));
-                joystick.start().and(joystick.x()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kReverse));
+                joystick.back().and(joystick.y()).whileTrue(shooter.sysIdDynamic(Direction.kForward));
+                joystick.back().and(joystick.x()).whileTrue(shooter.sysIdDynamic(Direction.kReverse));
+                joystick.start().and(joystick.y()).whileTrue(shooter.sysIdQuasistatic(Direction.kForward));
+                joystick.start().and(joystick.x()).whileTrue(shooter.sysIdQuasistatic(Direction.kReverse));
                 /*
                  * RobotModeTriggers.disabled().whileTrue(
                  * drivetrain.applyRequest(() -> idle).ignoringDisable(true));

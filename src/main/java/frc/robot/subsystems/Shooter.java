@@ -2,14 +2,12 @@ package frc.robot.subsystems;
 
 import static edu.wpi.first.units.Units.*;
 
-import java.lang.reflect.Field;
 import java.util.function.Supplier;
 
 import com.ctre.phoenix6.SignalLogger;
 
 import dev.doglog.DogLog;
 import edu.wpi.first.epilogue.Logged;
-import edu.wpi.first.epilogue.NotLogged;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation3d;
@@ -18,7 +16,6 @@ import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.networktables.DoubleSubscriber;
-import edu.wpi.first.units.measure.Angle;
 import edu.wpi.first.units.measure.AngularVelocity;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.RobotBase;
@@ -32,7 +29,8 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.FieldConstants;
 import frc.robot.subsystems.Flywheel.FlywheelSetpoint;
 import frc.robot.util.FuelSim;
-import frc.robot.util.ShootOnTheFlyCalculator;
+import frc.robot.util.shotcontrol.ShotCalculator;
+import frc.robot.util.shotcontrol.ShotLUT;
 
 /**
  * Shooter subsystem that orchestrates the turret, hood, and flywheel
@@ -61,8 +59,8 @@ public class Shooter extends SubsystemBase {
     private final Supplier<ChassisSpeeds> fieldRelativeSpeedsSupplier;
     private final FuelSim fuelSim;
 
-    private final ShootOnTheFlyCalculator sotfCalculator = buildSOTFCalculator();
-    private final ShootOnTheFlyCalculator passingSotfCalculator = buildPassingSOTFCalculator();
+    private final ShotCalculator sotfCalculator = buildSOTFCalculator();
+    private final ShotCalculator passingSotfCalculator = buildPassingSOTFCalculator();
 
     private final DoubleSubscriber hoodAngleOffsetDeg = DogLog.tunable("Shooter/SOTF/HoodAngleOffsetDeg", 0.0,
             edu.wpi.first.units.Units.Degrees);
@@ -145,55 +143,75 @@ public class Shooter extends SubsystemBase {
      * In alliance zone the target is the closest hub corner;
      * outside the alliance zone the target is the closest alliance zone corner.
      */
-    private ShootOnTheFlyCalculator.ShooterCommand getCurrentSOTFCommand() {
+    private ShotCalculator.LaunchParameters getCurrentSOTFCommand() {
         Pose2d robotPose = poseSupplier.get();
         Translation3d hub = DriverStation.getAlliance().get() == Alliance.Blue ? FieldConstants.Hub.topCenterPoint
                 : FieldConstants.Hub.oppTopCenterPoint;
         Translation2d target = isInAllianceZone()
                 ? new Translation2d(hub.getX(), hub.getY())
                 : getClosestAllianceZoneCorner();
-        ChassisSpeeds speeds = fieldRelativeSpeedsSupplier.get();
+    ChassisSpeeds fieldRelativeSpeeds = fieldRelativeSpeedsSupplier.get();
+    ChassisSpeeds robotRelativeSpeeds = ChassisSpeeds.fromFieldRelativeSpeeds(
+        fieldRelativeSpeeds,
+        robotPose.getRotation());
 
         // Pass the robot-relative offset to the calculator so it handles the omega*r
         // math itself
-        ShootOnTheFlyCalculator activeCalculator = isInAllianceZone() ? sotfCalculator : passingSotfCalculator;
+    ShotCalculator activeCalculator = isInAllianceZone() ? sotfCalculator : passingSotfCalculator;
+    Translation2d targetForward = target.minus(robotPose.getTranslation());
 
-        ShootOnTheFlyCalculator.ShooterCommand cmd = activeCalculator.calculate(
-                robotPose.getTranslation(),
-                robotPose.getRotation(),
-                new Translation2d(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond),
-                speeds.omegaRadiansPerSecond,
-                target,
-                0);
-        DogLog.log("Shooter/SOTF/EffectiveDistanceMeters", cmd.effectiveDistance());
+    ShotCalculator.LaunchParameters cmd = activeCalculator.calculate(new ShotCalculator.ShotInputs(
+        robotPose,
+        fieldRelativeSpeeds,
+        robotRelativeSpeeds,
+        target,
+        targetForward,
+        1.0));
+    DogLog.log("Shooter/SOTF/EffectiveDistanceMeters", cmd.solvedDistanceM());
         return cmd;
     }
 
     /**
-     * Builds the shoot-on-the-fly calculator with placeholder table entries.
+     * Builds the shoot-on-the-fly calculator 
      */
-    private static ShootOnTheFlyCalculator buildSOTFCalculator() {
-        ShootOnTheFlyCalculator calc = new ShootOnTheFlyCalculator();
-        calc.addTableEntry(1.127, 1800, 4.4, 1.11666667);
-        calc.addTableEntry(2.111, 32 * 60, 9.5, 1.23333333);
-        calc.addTableEntry(3.002, 33 * 60, 13, 1.3);
-        calc.addTableEntry(4.001, 36 * 60, 17, 1.33333334);
-        calc.addTableEntry(4.977, 2298, 25, 1.292);
-        calc.addTableEntry(5.980, 41 * 60, 30, 1.21829105);
+    private static ShotCalculator buildSOTFCalculator() {
+        ShotCalculator.Config config = new ShotCalculator.Config();
+        config.launcherOffsetX = -0.1651;
+        config.launcherOffsetY = -0.1016;
+        config.minScoringDistance = 1.127;
+        config.maxScoringDistance = 5.980;
+
+        ShotCalculator calc = new ShotCalculator(config, true);
+        ShotLUT lut = new ShotLUT();
+        lut.put(1.127, 1800, 4.4, 1.11666667);
+        lut.put(2.111, 32 * 60, 9.5, 1.23333333);
+        lut.put(3.002, 33 * 60, 13, 1.3);
+        lut.put(4.001, 36 * 60, 17, 1.33333334);
+        lut.put(4.977, 2298, 25, 1.292);
+        lut.put(5.980, 41 * 60, 30, 1.21829105);
+        calc.loadShotLUT(lut);
 
         return calc;
     }
 
     /**
-     * Builds the shoot-on-the-fly calculator with placeholder table entries.
+     * Builds the passing shoot-on-the-fly calculator 
      */
-    private static ShootOnTheFlyCalculator buildPassingSOTFCalculator() {
-        ShootOnTheFlyCalculator calc = new ShootOnTheFlyCalculator();
-        calc.addTableEntry(3.048, 25 * 60, 30, 1.06844741);
-        calc.addTableEntry(3.048 + 1.524, 30 * 60, 30, 1.2677231);
-        calc.addTableEntry(3.048 + 1.524 + 1.524, 36 * 60, 30, 1.4676451);
-        calc.addTableEntry(3.048 + 1.524 + 1.524 + 1.524, 41 * 60, 30, 1.63333333);
-        calc.addTableEntry(3.048 + 1.524 + 1.524 + 1.524 + 1.524, 46 * 60, 30, 1.6844563);
+    private static ShotCalculator buildPassingSOTFCalculator() {
+        ShotCalculator.Config config = new ShotCalculator.Config();
+        config.launcherOffsetX = -0.1651;
+        config.launcherOffsetY = -0.1016;
+        config.minScoringDistance = 3.048;
+        config.maxScoringDistance = 3.048 + 1.524 + 1.524 + 1.524 + 1.524;
+
+        ShotCalculator calc = new ShotCalculator(config, false);
+        ShotLUT lut = new ShotLUT();
+        lut.put(3.048, 25 * 60, 30, 1.06844741);
+        lut.put(3.048 + 1.524, 30 * 60, 30, 1.2677231);
+        lut.put(3.048 + 1.524 + 1.524, 36 * 60, 30, 1.4676451);
+        lut.put(3.048 + 1.524 + 1.524 + 1.524, 41 * 60, 30, 1.63333333);
+        lut.put(3.048 + 1.524 + 1.524 + 1.524 + 1.524, 46 * 60, 30, 1.6844563);
+        calc.loadShotLUT(lut);
 
         return calc;
     }
@@ -297,10 +315,8 @@ public class Shooter extends SubsystemBase {
                     break;
                 case Autoaim: {
                     hoodAngleDeg = cmd.hoodAngle(); // hoodAngleOffsetDeg.get();
-                    // Turret: continuously track the SOTF turret angle (robot-relative)
-                    turretAngleDeg = cmd.turretAngle()
-                            .minus(poseSupplier.get().getRotation())
-                            .getDegrees();
+                    // Turret: continuously track the SOTF turret angle (already robot-relative)
+                    turretAngleDeg = cmd.turretAngle().getDegrees();
                     rpm = cmd.rpm() / 60.0;// rpmOffset.get();
                 }
             }
@@ -309,7 +325,7 @@ public class Shooter extends SubsystemBase {
                 flywheel.setTarget(rpm);
             }
 
-            double turretFFRadPerSec = (shooterMode == ShooterMode.Autoaim) ? cmd.turretAngularVelocityFFRadPerSec()
+        double turretFFRadPerSec = (shooterMode == ShooterMode.Autoaim) ? cmd.turretAngularVelocityRadPerSec()
                     : 0.0;
             turret.setAngle(robotRelativeToTurretSetpointDeg(turretAngleDeg), turretFFRadPerSec);
         }, () -> {
@@ -364,9 +380,7 @@ public class Shooter extends SubsystemBase {
             double hoodAngleDeg = hoodAngleOffsetDeg.get();
 
             // Turret: continuously track the SOTF turret angle (robot-relative)
-            double turretAngleDegRobotRel = cmd.turretAngle()
-                    .minus(poseSupplier.get().getRotation())
-                    .getDegrees();
+        double turretAngleDegRobotRel = cmd.turretAngle().getDegrees();
             // Compensate because the turret's zero is pointing directly rearward.
             // Convert robot-relative angle (0 = forward) to turret mechanism angle (0 =
             // rear).
